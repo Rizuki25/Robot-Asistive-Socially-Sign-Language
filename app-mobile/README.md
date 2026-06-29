@@ -69,6 +69,95 @@ Jika PowerShell memblokir `npm.ps1`, gunakan `npm.cmd` seperti contoh di atas.
 6. Tekan `🤟 Kirim Hasil` atau `🎤 Balas` dari salah satu perangkat.
 7. Pesan akan muncul di semua perangkat yang join room yang sama.
 
+## Deploy online HTTPS
+
+> Catatan penting: Vercel cocok untuk deploy frontend React/Vite, tetapi tidak cocok untuk Socket.IO server yang harus berjalan terus. Untuk realtime multi-HP, deploy frontend ke Vercel dan deploy `server/index.js` ke layanan backend yang mendukung WebSocket seperti Render atau Railway.
+
+### 1. Deploy Socket.IO backend
+
+Deploy folder `app-mobile` ke Render/Railway sebagai Web Service.
+
+Pengaturan umum:
+
+```text
+Root Directory : app-mobile
+Build Command  : npm install
+Start Command  : npm run server
+Port           : 3001 atau otomatis dari environment PORT
+```
+
+Setelah deploy, kamu akan mendapatkan URL backend HTTPS, misalnya:
+
+```text
+https://sign-language-socket.onrender.com
+```
+
+Cek health endpoint:
+
+```text
+https://sign-language-socket.onrender.com/health
+```
+
+Jika berhasil, output-nya:
+
+```json
+{"status":"ok"}
+```
+
+### 2. Deploy frontend ke Vercel
+
+Di Vercel:
+
+```text
+Framework Preset : Vite
+Root Directory   : app-mobile
+Build Command    : npm run build
+Output Directory : dist
+```
+
+Tambahkan Environment Variable di Vercel:
+
+```text
+VITE_SOCKET_URL=https://URL-BACKEND-SOCKET-KAMU
+```
+
+Contoh:
+
+```text
+VITE_SOCKET_URL=https://sign-language-socket.onrender.com
+```
+
+Setelah itu klik deploy. Frontend akan mendapatkan URL HTTPS seperti:
+
+```text
+https://sign-language-assistant.vercel.app
+```
+
+### 3. Atur CORS backend
+
+Setelah frontend Vercel jadi, sebaiknya tambahkan environment variable di backend:
+
+```text
+CLIENT_ORIGIN=https://URL-FRONTEND-VERCEL-KAMU
+```
+
+Contoh:
+
+```text
+CLIENT_ORIGIN=https://sign-language-assistant.vercel.app
+```
+
+Lalu restart/redeploy backend.
+
+### 4. Uji di HP
+
+1. Buka URL Vercel di beberapa HP.
+2. Masuk ke `💬 Mode Percakapan`.
+3. Pastikan semua HP memakai room yang sama, misalnya `demo-ta`.
+4. Tekan `🎤 Balas` di salah satu HP.
+5. Karena URL sudah HTTPS, fitur microphone/speech-to-text lebih aman untuk browser HP.
+6. Hasil teks akan dikirim ke Socket.IO backend dan muncul di semua perangkat.
+
 ## Endpoint integrasi model robot
 
 Server menyediakan endpoint untuk mengirim hasil model bahasa isyarat ke semua perangkat:

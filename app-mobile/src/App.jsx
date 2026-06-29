@@ -9,9 +9,24 @@ const MODES = {
 };
 
 const DEFAULT_ROOM_ID = "demo-ta";
-const SOCKET_URL =
-  import.meta.env.VITE_SOCKET_URL ||
-  `${window.location.protocol}//${window.location.hostname}:3001`;
+
+function getDefaultSocketUrl() {
+  const { protocol, hostname } = window.location;
+  const isLocalNetwork =
+    hostname === "localhost" ||
+    hostname === "127.0.0.1" ||
+    hostname.startsWith("192.168.") ||
+    hostname.startsWith("10.") ||
+    /^172\.(1[6-9]|2\d|3[0-1])\./.test(hostname);
+
+  if (isLocalNetwork) {
+    return `${protocol}//${hostname}:3001`;
+  }
+
+  return "";
+}
+
+const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || getDefaultSocketUrl();
 
 function App() {
   const socketRef = useRef(null);
@@ -30,6 +45,13 @@ function App() {
   }, []);
 
   useEffect(() => {
+    if (!SOCKET_URL) {
+      setSocketStatus(
+        "VITE_SOCKET_URL belum diatur. Isi dengan URL backend Socket.IO HTTPS.",
+      );
+      return;
+    }
+
     const socket = io(SOCKET_URL, {
       transports: ["websocket", "polling"],
     });
@@ -120,6 +142,13 @@ function App() {
   };
 
   const startListening = (onFinalTranscript) => {
+    if (!window.isSecureContext) {
+      setSpeechStatus(
+        "Speech-to-text di HP membutuhkan HTTPS. Buka lewat HTTPS, misalnya Cloudflare Tunnel atau deploy online.",
+      );
+      return;
+    }
+
     if (!speechRecognition) {
       setSpeechStatus(
         "Browser belum mendukung speech-to-text. Gunakan Chrome atau Edge.",
@@ -133,6 +162,7 @@ function App() {
     recognition.continuous = false;
 
     let finalTranscript = "";
+    let hasRecognitionError = false;
 
     setIsListening(true);
     setSpeechStatus("Tolong tunggu sebentar...");
@@ -148,16 +178,34 @@ function App() {
       setTranscript(text);
     };
 
-    recognition.onerror = () => {
+    recognition.onerror = (event) => {
+      hasRecognitionError = true;
+
+      const errorMessages = {
+        "not-allowed": "Izin mikrofon ditolak atau halaman belum HTTPS.",
+        "service-not-allowed":
+          "Layanan speech-to-text diblokir browser/jaringan.",
+        "no-speech":
+          "Tidak ada suara terdeteksi. Coba bicara lebih dekat ke mikrofon.",
+        network:
+          "Koneksi speech-to-text bermasalah. Coba jaringan lain atau HTTPS.",
+      };
+
       setSpeechStatus(
-        "Suara belum berhasil dikenali. Coba ulangi sekali lagi.",
+        errorMessages[event.error] ||
+          `Speech-to-text gagal: ${event.error || "error tidak diketahui"}`,
       );
       setIsListening(false);
     };
 
     recognition.onend = () => {
-      setSpeechStatus("Selesai mendengarkan");
       setIsListening(false);
+
+      if (hasRecognitionError) {
+        return;
+      }
+
+      setSpeechStatus("Selesai mendengarkan");
 
       if (finalTranscript && typeof onFinalTranscript === "function") {
         onFinalTranscript(finalTranscript);

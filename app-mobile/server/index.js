@@ -4,15 +4,20 @@ import http from "http";
 import { Server } from "socket.io";
 
 const PORT = process.env.PORT || 3001;
+const CLIENT_ORIGIN = process.env.CLIENT_ORIGIN || "*";
 const app = express();
 const server = http.createServer(app);
 
-app.use(cors());
+app.use(
+  cors({
+    origin: CLIENT_ORIGIN,
+  }),
+);
 app.use(express.json());
 
 const io = new Server(server, {
   cors: {
-    origin: "*",
+    origin: CLIENT_ORIGIN,
   },
 });
 
