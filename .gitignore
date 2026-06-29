@@ -1,0 +1,37 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+venv/
+env/
+.env/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints/
+
+# Dataset (terlalu besar untuk Git)
+dataset/raw/
+dataset/landmarks/
+dataset/processed/
+
+# Output models & logs
+outputs/models/*.pth
+outputs/logs/
+outputs/figures/
+outputs/results/
+
+# Misc
+*.log
+*.tmp

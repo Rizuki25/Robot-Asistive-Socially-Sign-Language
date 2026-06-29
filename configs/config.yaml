@@ -1,0 +1,59 @@
+# =============================================================
+# Konfigurasi Project: Sign Language Recognition - BiLSTM
+# =============================================================
+
+# --- Path ---
+paths:
+  raw_dataset: "dataset/raw"
+  landmarks: "dataset/landmarks"
+  processed: "dataset/processed"
+  models: "outputs/models"
+  logs: "outputs/logs"
+  figures: "outputs/figures"
+  results: "outputs/results"
+
+# --- Ekstraksi Landmark ---
+landmark:
+  max_num_hands: 1              # Jumlah tangan yang dideteksi
+  min_detection_confidence: 0.5 # Confidence minimum deteksi tangan
+  min_tracking_confidence: 0.5  # Confidence minimum tracking
+  num_landmarks: 21             # Jumlah titik landmark per tangan
+  num_coordinates: 3            # Koordinat per landmark (x, y, z)
+
+# --- Preprocessing ---
+preprocessing:
+  max_seq_length: 50            # Panjang sequence maksimum (padding/truncate)
+  normalization: "minmax"       # Metode normalisasi: "minmax" atau "zscore"
+  test_size: 0.15               # Proporsi data test
+  val_size: 0.15                # Proporsi data validation
+  random_seed: 42               # Seed untuk reproducibility
+
+# --- Model BiLSTM ---
+model:
+  input_size: 63                # 21 landmarks × 3 koordinat (x, y, z)
+  hidden_size: 128              # Ukuran hidden state LSTM
+  num_layers: 2                 # Jumlah layer LSTM
+  dropout: 0.3                  # Dropout rate
+  bidirectional: true           # Gunakan BiLSTM
+
+# --- Training ---
+training:
+  batch_size: 32                # Ukuran batch
+  epochs: 100                   # Maksimum epoch
+  learning_rate: 0.001          # Learning rate awal
+  weight_decay: 0.0001          # L2 regularization
+  patience: 10                  # Early stopping patience
+  scheduler:
+    type: "ReduceLROnPlateau"   # Tipe scheduler
+    factor: 0.5                 # Faktor pengurangan LR
+    patience: 5                 # Patience scheduler
+  random_seed: 42               # Seed untuk reproducibility
+
+# --- Evaluasi ---
+evaluation:
+  metrics:
+    - "accuracy"
+    - "precision"
+    - "recall"
+    - "f1_score"
+    - "confusion_matrix"
