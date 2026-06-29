@@ -1,66 +1,75 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState } from "react";
 
 const MODES = {
-  MENU: 'menu',
-  SIGN_TO_SPEECH: 'sign-to-speech',
-  SPEECH_TO_TEXT: 'speech-to-text',
+  MENU: "menu",
+  SIGN_TO_SPEECH: "sign-to-speech",
+  SPEECH_TO_TEXT: "speech-to-text",
+  CONVERSATION: "conversation",
 };
 
 function App() {
   const [mode, setMode] = useState(MODES.MENU);
-  const [recognizedText, setRecognizedText] = useState('Saya ingin minum');
-  const [transcript, setTranscript] = useState('');
-  const [speechStatus, setSpeechStatus] = useState('Siap mendengarkan');
+  const [recognizedText, setRecognizedText] = useState("Saya ingin minum");
+  const [transcript, setTranscript] = useState("");
+  const [speechStatus, setSpeechStatus] = useState("Siap mendengarkan");
   const [isListening, setIsListening] = useState(false);
 
   const speechRecognition = useMemo(() => {
     return window.SpeechRecognition || window.webkitSpeechRecognition || null;
   }, []);
 
-  const speakRecognizedText = () => {
-    if (!('speechSynthesis' in window)) {
-      alert('Browser belum mendukung text-to-speech.');
+  const speakText = (text) => {
+    if (!("speechSynthesis" in window)) {
+      alert("Browser belum mendukung text-to-speech.");
       return;
     }
 
-    const utterance = new SpeechSynthesisUtterance(recognizedText);
-    utterance.lang = 'id-ID';
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.lang = "id-ID";
     utterance.rate = 0.95;
     window.speechSynthesis.cancel();
     window.speechSynthesis.speak(utterance);
   };
 
+  const speakRecognizedText = () => {
+    speakText(recognizedText);
+  };
+
   const startListening = () => {
     if (!speechRecognition) {
-      setSpeechStatus('Browser belum mendukung speech-to-text. Gunakan Chrome atau Edge.');
+      setSpeechStatus(
+        "Browser belum mendukung speech-to-text. Gunakan Chrome atau Edge.",
+      );
       return;
     }
 
     const recognition = new speechRecognition();
-    recognition.lang = 'id-ID';
+    recognition.lang = "id-ID";
     recognition.interimResults = true;
     recognition.continuous = false;
 
     setIsListening(true);
-    setSpeechStatus('Tolong tunggu sebentar...');
-    setTranscript('');
+    setSpeechStatus("Tolong tunggu sebentar...");
+    setTranscript("");
 
     recognition.onresult = (event) => {
       const text = Array.from(event.results)
         .map((result) => result[0].transcript)
-        .join(' ')
+        .join(" ")
         .trim();
 
       setTranscript(text);
     };
 
     recognition.onerror = () => {
-      setSpeechStatus('Suara belum berhasil dikenali. Coba ulangi sekali lagi.');
+      setSpeechStatus(
+        "Suara belum berhasil dikenali. Coba ulangi sekali lagi.",
+      );
       setIsListening(false);
     };
 
     recognition.onend = () => {
-      setSpeechStatus('Selesai mendengarkan');
+      setSpeechStatus("Selesai mendengarkan");
       setIsListening(false);
     };
 
@@ -77,6 +86,7 @@ function App() {
             <ModeSelector
               onSignToSpeech={() => setMode(MODES.SIGN_TO_SPEECH)}
               onSpeechToText={() => setMode(MODES.SPEECH_TO_TEXT)}
+              onConversation={() => setMode(MODES.CONVERSATION)}
             />
           )}
 
@@ -93,6 +103,18 @@ function App() {
               isListening={isListening}
               speechStatus={speechStatus}
               transcript={transcript}
+              onStartListening={startListening}
+            />
+          )}
+
+          {mode === MODES.CONVERSATION && (
+            <ConversationScreen
+              recognizedText={recognizedText}
+              setRecognizedText={setRecognizedText}
+              transcript={transcript}
+              speechStatus={speechStatus}
+              isListening={isListening}
+              onSpeak={speakText}
               onStartListening={startListening}
             />
           )}
@@ -119,7 +141,7 @@ function Header({ onBack }) {
   );
 }
 
-function ModeSelector({ onSignToSpeech, onSpeechToText }) {
+function ModeSelector({ onSignToSpeech, onSpeechToText, onConversation }) {
   return (
     <div className="flex flex-1 flex-col justify-center gap-8">
       <div className="text-center">
@@ -133,7 +155,8 @@ function ModeSelector({ onSignToSpeech, onSpeechToText }) {
           Sign Language Assistant
         </h1>
         <p className="mt-3 text-sm leading-6 text-slate-600">
-          Aplikasi pendamping komunikasi antara pengenalan bahasa isyarat robot dan suara manusia.
+          Aplikasi pendamping komunikasi antara pengenalan bahasa isyarat robot
+          dan suara manusia.
         </p>
       </div>
 
@@ -149,6 +172,12 @@ function ModeSelector({ onSignToSpeech, onSpeechToText }) {
           title="Suara → Teks"
           description="Ucapan orang normal diubah menjadi teks untuk dibaca."
           onClick={onSpeechToText}
+        />
+        <ModeButton
+          icon="💬"
+          title="Mode Percakapan"
+          description="Komunikasi dua arah dalam satu layar dengan tampilan chat."
+          onClick={onConversation}
         />
       </div>
     </div>
@@ -166,8 +195,12 @@ function ModeButton({ icon, title, description, onClick }) {
         {icon}
       </span>
       <span>
-        <span className="block text-base font-black text-slate-950">{title}</span>
-        <span className="mt-1 block text-sm leading-5 text-slate-500">{description}</span>
+        <span className="block text-base font-black text-slate-950">
+          {title}
+        </span>
+        <span className="mt-1 block text-sm leading-5 text-slate-500">
+          {description}
+        </span>
       </span>
     </button>
   );
@@ -180,22 +213,29 @@ function SignToSpeechScreen({ recognizedText, setRecognizedText, onSpeak }) {
         <p className="text-sm font-semibold uppercase tracking-[0.2em] text-emerald-600">
           Mode Output
         </p>
-        <h1 className="mt-2 text-2xl font-black text-slate-950">🤟 Bahasa Isyarat → Suara</h1>
+        <h1 className="mt-2 text-2xl font-black text-slate-950">
+          🤟 Bahasa Isyarat → Suara
+        </h1>
       </div>
 
       <div className="flex min-h-60 flex-1 flex-col items-center justify-center rounded-[2rem] border-2 border-dashed border-slate-300 bg-slate-100 p-5 text-center">
         <div className="mb-4 flex h-20 w-20 items-center justify-center rounded-full bg-slate-900 text-4xl text-white">
           📷
         </div>
-        <p className="text-lg font-black text-slate-900">Kamera / Stream Robot</p>
+        <p className="text-lg font-black text-slate-900">
+          Kamera / Stream Robot
+        </p>
         <p className="mt-2 text-sm leading-6 text-slate-500">
-          Area ini disiapkan untuk kamera, stream robot, atau frame yang dikirim ke model BiLSTM.
+          Area ini disiapkan untuk kamera, stream robot, atau frame yang dikirim
+          ke model BiLSTM.
         </p>
       </div>
 
       <div className="rounded-[2rem] bg-white p-5 shadow-sm">
         <div className="mb-3 flex items-center justify-between">
-          <h2 className="text-sm font-bold uppercase tracking-[0.2em] text-slate-500">Hasil</h2>
+          <h2 className="text-sm font-bold uppercase tracking-[0.2em] text-slate-500">
+            Hasil
+          </h2>
           <span className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-bold text-emerald-700">
             Prediksi
           </span>
@@ -221,18 +261,27 @@ function SignToSpeechScreen({ recognizedText, setRecognizedText, onSpeak }) {
   );
 }
 
-function SpeechToTextScreen({ isListening, speechStatus, transcript, onStartListening }) {
+function SpeechToTextScreen({
+  isListening,
+  speechStatus,
+  transcript,
+  onStartListening,
+}) {
   return (
     <div className="flex flex-1 flex-col gap-5">
       <div>
         <p className="text-sm font-semibold uppercase tracking-[0.2em] text-sky-600">
           Mode Input
         </p>
-        <h1 className="mt-2 text-2xl font-black text-slate-950">🎤 Suara → Teks</h1>
+        <h1 className="mt-2 text-2xl font-black text-slate-950">
+          🎤 Suara → Teks
+        </h1>
       </div>
 
       <div className="flex flex-1 flex-col items-center justify-center rounded-[2rem] bg-slate-900 p-6 text-center text-white">
-        <div className={`mb-5 flex h-24 w-24 items-center justify-center rounded-full text-5xl ${isListening ? 'animate-pulse bg-red-500' : 'bg-sky-500'}`}>
+        <div
+          className={`mb-5 flex h-24 w-24 items-center justify-center rounded-full text-5xl ${isListening ? "animate-pulse bg-red-500" : "bg-sky-500"}`}
+        >
           🎤
         </div>
         <button
@@ -241,9 +290,11 @@ function SpeechToTextScreen({ isListening, speechStatus, transcript, onStartList
           disabled={isListening}
           className="w-full rounded-2xl bg-white px-5 py-4 text-base font-black text-slate-950 transition active:scale-[0.98] disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-500"
         >
-          {isListening ? 'Sedang Mendengarkan...' : 'Mulai Berbicara'}
+          {isListening ? "Sedang Mendengarkan..." : "Mulai Berbicara"}
         </button>
-        <p className="mt-4 text-sm font-semibold text-slate-300">{speechStatus}</p>
+        <p className="mt-4 text-sm font-semibold text-slate-300">
+          {speechStatus}
+        </p>
       </div>
 
       <div className="rounded-[2rem] bg-white p-5 shadow-sm">
@@ -251,8 +302,134 @@ function SpeechToTextScreen({ isListening, speechStatus, transcript, onStartList
           Hasil Teks
         </h2>
         <div className="min-h-32 rounded-2xl border border-slate-200 bg-slate-50 p-4 text-xl font-black leading-8 text-slate-900">
-          {transcript || 'Teks dari suara akan muncul di sini.'}
+          {transcript || "Teks dari suara akan muncul di sini."}
         </div>
+      </div>
+    </div>
+  );
+}
+
+function ConversationScreen({
+  recognizedText,
+  setRecognizedText,
+  transcript,
+  speechStatus,
+  isListening,
+  onSpeak,
+  onStartListening,
+}) {
+  return (
+    <div className="flex flex-1 flex-col gap-5">
+      <div>
+        <p className="text-sm font-semibold uppercase tracking-[0.2em] text-violet-600">
+          Mode Dua Arah
+        </p>
+        <h1 className="mt-2 text-2xl font-black text-slate-950">
+          💬 Mode Percakapan
+        </h1>
+        <p className="mt-2 text-sm leading-6 text-slate-600">
+          Satu layar untuk menampilkan hasil isyarat dari robot dan balasan
+          suara dari orang normal.
+        </p>
+      </div>
+
+      <div className="flex flex-1 flex-col gap-4 rounded-[2rem] bg-slate-900 p-4">
+        <ConversationBubble
+          align="left"
+          icon="🤟"
+          label="Penyandang Disabilitas"
+          caption="Dari robot/model"
+          text={recognizedText || "Menunggu hasil pengenalan bahasa isyarat..."}
+          actionLabel="🔊 Bacakan"
+          onAction={() => onSpeak(recognizedText)}
+          disabled={!recognizedText}
+        />
+
+        <ConversationBubble
+          align="right"
+          icon="🎤"
+          label="Orang Normal"
+          caption="Dari speech-to-text"
+          text={
+            transcript ||
+            "Tekan tombol bicara, lalu hasil suara akan muncul di sini."
+          }
+        />
+      </div>
+
+      <div className="grid gap-3 rounded-[2rem] bg-white p-4 shadow-sm">
+        <label className="grid gap-2">
+          <span className="text-xs font-bold uppercase tracking-[0.2em] text-slate-500">
+            Simulasi hasil robot/model
+          </span>
+          <textarea
+            value={recognizedText}
+            onChange={(event) => setRecognizedText(event.target.value)}
+            rows={2}
+            className="w-full resize-none rounded-2xl border border-slate-200 bg-slate-50 p-3 text-base font-bold leading-6 outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
+            placeholder="Hasil bahasa isyarat dari server akan muncul di sini"
+          />
+        </label>
+
+        <button
+          type="button"
+          onClick={onStartListening}
+          disabled={isListening}
+          className="rounded-2xl bg-violet-600 px-5 py-4 text-base font-black text-white shadow-lg shadow-violet-200 transition hover:bg-violet-700 active:scale-[0.98] disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-500"
+        >
+          {isListening ? "🎤 Sedang Mendengarkan..." : "🎤 Balas dengan Suara"}
+        </button>
+        <p className="text-center text-sm font-semibold text-slate-500">
+          {speechStatus}
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function ConversationBubble({
+  align,
+  icon,
+  label,
+  caption,
+  text,
+  actionLabel,
+  onAction,
+  disabled,
+}) {
+  const isRight = align === "right";
+
+  return (
+    <div className={`flex ${isRight ? "justify-end" : "justify-start"}`}>
+      <div
+        className={`max-w-[86%] rounded-[1.5rem] p-4 ${isRight ? "bg-sky-500 text-white" : "bg-white text-slate-950"}`}
+      >
+        <div className="mb-2 flex items-center gap-2">
+          <span
+            className={`flex h-9 w-9 items-center justify-center rounded-full text-xl ${isRight ? "bg-white/20" : "bg-emerald-100"}`}
+          >
+            {icon}
+          </span>
+          <span>
+            <span className="block text-sm font-black">{label}</span>
+            <span
+              className={`block text-xs font-semibold ${isRight ? "text-sky-100" : "text-slate-500"}`}
+            >
+              {caption}
+            </span>
+          </span>
+        </div>
+        <p className="text-lg font-black leading-7">{text}</p>
+        {actionLabel && (
+          <button
+            type="button"
+            onClick={onAction}
+            disabled={disabled}
+            className="mt-3 rounded-full bg-emerald-500 px-4 py-2 text-sm font-black text-white transition active:scale-95 disabled:cursor-not-allowed disabled:bg-slate-300"
+          >
+            {actionLabel}
+          </button>
+        )}
       </div>
     </div>
   );
