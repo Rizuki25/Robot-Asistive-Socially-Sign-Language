@@ -1,4 +1,5 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { io } from "socket.io-client";
 
 const MODES = {
   MENU: "menu",
@@ -7,18 +8,101 @@ const MODES = {
   CONVERSATION: "conversation",
 };
 
+const DEFAULT_ROOM_ID = "demo-ta";
+const SOCKET_URL =
+  import.meta.env.VITE_SOCKET_URL ||
+  `${window.location.protocol}//${window.location.hostname}:3001`;
+
 function App() {
+  const socketRef = useRef(null);
   const [mode, setMode] = useState(MODES.MENU);
   const [recognizedText, setRecognizedText] = useState("Saya ingin minum");
   const [transcript, setTranscript] = useState("");
   const [speechStatus, setSpeechStatus] = useState("Siap mendengarkan");
   const [isListening, setIsListening] = useState(false);
+  const [roomId, setRoomId] = useState(DEFAULT_ROOM_ID);
+  const [activeRoomId, setActiveRoomId] = useState(DEFAULT_ROOM_ID);
+  const [socketStatus, setSocketStatus] = useState("Menghubungkan realtime...");
+  const [messages, setMessages] = useState([]);
 
   const speechRecognition = useMemo(() => {
     return window.SpeechRecognition || window.webkitSpeechRecognition || null;
   }, []);
 
+  useEffect(() => {
+    const socket = io(SOCKET_URL, {
+      transports: ["websocket", "polling"],
+    });
+
+    socketRef.current = socket;
+
+    socket.on("connect", () => {
+      setSocketStatus(`Realtime aktif: ${activeRoomId}`);
+      socket.emit("join-room", activeRoomId);
+    });
+
+    socket.on("disconnect", () => {
+      setSocketStatus("Realtime terputus");
+    });
+
+    socket.on("connect_error", () => {
+      setSocketStatus(`Gagal terhubung ke ${SOCKET_URL}`);
+    });
+
+    socket.on("message", (message) => {
+      setMessages((currentMessages) => [...currentMessages, message]);
+
+      if (message.sender === "sign") {
+        setRecognizedText(message.text);
+      }
+
+      if (message.sender === "voice") {
+        setTranscript(message.text);
+      }
+    });
+
+    return () => {
+      socket.disconnect();
+    };
+  }, [activeRoomId]);
+
+  const joinRoom = () => {
+    const nextRoomId = roomId.trim() || DEFAULT_ROOM_ID;
+    setActiveRoomId(nextRoomId);
+    setMessages([]);
+
+    if (socketRef.current?.connected) {
+      socketRef.current.emit("join-room", nextRoomId);
+      setSocketStatus(`Realtime aktif: ${nextRoomId}`);
+    }
+  };
+
+  const sendRealtimeMessage = (sender, text) => {
+    const cleanText = text.trim();
+
+    if (!cleanText) {
+      return;
+    }
+
+    if (!socketRef.current?.connected) {
+      setSocketStatus(
+        "Realtime belum terhubung. Pastikan server Socket.IO aktif.",
+      );
+      return;
+    }
+
+    socketRef.current.emit("send-message", {
+      roomId: activeRoomId,
+      sender,
+      text: cleanText,
+    });
+  };
+
   const speakText = (text) => {
+    if (!text) {
+      return;
+    }
+
     if (!("speechSynthesis" in window)) {
       alert("Browser belum mendukung text-to-speech.");
       return;
@@ -35,7 +119,7 @@ function App() {
     speakText(recognizedText);
   };
 
-  const startListening = () => {
+  const startListening = (onFinalTranscript) => {
     if (!speechRecognition) {
       setSpeechStatus(
         "Browser belum mendukung speech-to-text. Gunakan Chrome atau Edge.",
@@ -48,6 +132,8 @@ function App() {
     recognition.interimResults = true;
     recognition.continuous = false;
 
+    let finalTranscript = "";
+
     setIsListening(true);
     setSpeechStatus("Tolong tunggu sebentar...");
     setTranscript("");
@@ -58,6 +144,7 @@ function App() {
         .join(" ")
         .trim();
 
+      finalTranscript = text;
       setTranscript(text);
     };
 
@@ -71,6 +158,10 @@ function App() {
     recognition.onend = () => {
       setSpeechStatus("Selesai mendengarkan");
       setIsListening(false);
+
+      if (finalTranscript && typeof onFinalTranscript === "function") {
+        onFinalTranscript(finalTranscript);
+      }
     };
 
     recognition.start();
@@ -95,6 +186,8 @@ function App() {
               recognizedText={recognizedText}
               setRecognizedText={setRecognizedText}
               onSpeak={speakRecognizedText}
+              onSend={() => sendRealtimeMessage("sign", recognizedText)}
+              socketStatus={socketStatus}
             />
           )}
 
@@ -103,19 +196,30 @@ function App() {
               isListening={isListening}
               speechStatus={speechStatus}
               transcript={transcript}
-              onStartListening={startListening}
+              socketStatus={socketStatus}
+              onStartListening={() =>
+                startListening((text) => sendRealtimeMessage("voice", text))
+              }
             />
           )}
 
           {mode === MODES.CONVERSATION && (
             <ConversationScreen
+              activeRoomId={activeRoomId}
+              roomId={roomId}
+              setRoomId={setRoomId}
+              onJoinRoom={joinRoom}
+              socketStatus={socketStatus}
               recognizedText={recognizedText}
               setRecognizedText={setRecognizedText}
-              transcript={transcript}
+              messages={messages}
               speechStatus={speechStatus}
               isListening={isListening}
               onSpeak={speakText}
-              onStartListening={startListening}
+              onSendSign={() => sendRealtimeMessage("sign", recognizedText)}
+              onStartListening={() =>
+                startListening((text) => sendRealtimeMessage("voice", text))
+              }
             />
           )}
         </div>
@@ -176,7 +280,7 @@ function ModeSelector({ onSignToSpeech, onSpeechToText, onConversation }) {
         <ModeButton
           icon="💬"
           title="Mode Percakapan"
-          description="Komunikasi dua arah dalam satu layar dengan tampilan chat."
+          description="Komunikasi dua arah realtime di banyak HP sekaligus."
           onClick={onConversation}
         />
       </div>
@@ -206,7 +310,13 @@ function ModeButton({ icon, title, description, onClick }) {
   );
 }
 
-function SignToSpeechScreen({ recognizedText, setRecognizedText, onSpeak }) {
+function SignToSpeechScreen({
+  recognizedText,
+  setRecognizedText,
+  onSpeak,
+  onSend,
+  socketStatus,
+}) {
   return (
     <div className="flex flex-1 flex-col gap-5">
       <div>
@@ -216,6 +326,9 @@ function SignToSpeechScreen({ recognizedText, setRecognizedText, onSpeak }) {
         <h1 className="mt-2 text-2xl font-black text-slate-950">
           🤟 Bahasa Isyarat → Suara
         </h1>
+        <p className="mt-2 text-xs font-semibold text-slate-500">
+          {socketStatus}
+        </p>
       </div>
 
       <div className="flex min-h-60 flex-1 flex-col items-center justify-center rounded-[2rem] border-2 border-dashed border-slate-300 bg-slate-100 p-5 text-center">
@@ -249,13 +362,22 @@ function SignToSpeechScreen({ recognizedText, setRecognizedText, onSpeak }) {
           placeholder="Hasil pengenalan bahasa isyarat akan muncul di sini"
         />
 
-        <button
-          type="button"
-          onClick={onSpeak}
-          className="mt-4 w-full rounded-2xl bg-emerald-500 px-5 py-4 text-base font-black text-white shadow-lg shadow-emerald-200 transition hover:bg-emerald-600 active:scale-[0.98]"
-        >
-          🔊 Membacakan
-        </button>
+        <div className="mt-4 grid gap-3">
+          <button
+            type="button"
+            onClick={onSpeak}
+            className="w-full rounded-2xl bg-emerald-500 px-5 py-4 text-base font-black text-white shadow-lg shadow-emerald-200 transition hover:bg-emerald-600 active:scale-[0.98]"
+          >
+            🔊 Membacakan
+          </button>
+          <button
+            type="button"
+            onClick={onSend}
+            className="w-full rounded-2xl bg-slate-900 px-5 py-4 text-base font-black text-white transition hover:bg-slate-800 active:scale-[0.98]"
+          >
+            Kirim ke Semua Perangkat
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -265,6 +387,7 @@ function SpeechToTextScreen({
   isListening,
   speechStatus,
   transcript,
+  socketStatus,
   onStartListening,
 }) {
   return (
@@ -276,6 +399,9 @@ function SpeechToTextScreen({
         <h1 className="mt-2 text-2xl font-black text-slate-950">
           🎤 Suara → Teks
         </h1>
+        <p className="mt-2 text-xs font-semibold text-slate-500">
+          {socketStatus}
+        </p>
       </div>
 
       <div className="flex flex-1 flex-col items-center justify-center rounded-[2rem] bg-slate-900 p-6 text-center text-white">
@@ -310,12 +436,18 @@ function SpeechToTextScreen({
 }
 
 function ConversationScreen({
+  activeRoomId,
+  roomId,
+  setRoomId,
+  onJoinRoom,
+  socketStatus,
   recognizedText,
   setRecognizedText,
-  transcript,
+  messages,
   speechStatus,
   isListening,
   onSpeak,
+  onSendSign,
   onStartListening,
 }) {
   return (
@@ -328,33 +460,65 @@ function ConversationScreen({
           💬 Mode Percakapan
         </h1>
         <p className="mt-2 text-sm leading-6 text-slate-600">
-          Satu layar untuk menampilkan hasil isyarat dari robot dan balasan
-          suara dari orang normal.
+          Semua HP/laptop yang masuk room yang sama akan menerima chat realtime.
         </p>
       </div>
 
-      <div className="flex flex-1 flex-col gap-4 rounded-[2rem] bg-slate-900 p-4">
-        <ConversationBubble
-          align="left"
-          icon="🤟"
-          label="Penyandang Disabilitas"
-          caption="Dari robot/model"
-          text={recognizedText || "Menunggu hasil pengenalan bahasa isyarat..."}
-          actionLabel="🔊 Bacakan"
-          onAction={() => onSpeak(recognizedText)}
-          disabled={!recognizedText}
-        />
+      <div className="rounded-[2rem] bg-white p-4 shadow-sm">
+        <label className="grid gap-2">
+          <span className="text-xs font-bold uppercase tracking-[0.2em] text-slate-500">
+            Room Percakapan
+          </span>
+          <div className="flex gap-2">
+            <input
+              value={roomId}
+              onChange={(event) => setRoomId(event.target.value)}
+              className="min-w-0 flex-1 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-bold outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
+              placeholder="demo-ta"
+            />
+            <button
+              type="button"
+              onClick={onJoinRoom}
+              className="rounded-2xl bg-slate-900 px-4 py-3 text-sm font-black text-white active:scale-95"
+            >
+              Gabung
+            </button>
+          </div>
+        </label>
+        <p className="mt-2 text-xs font-semibold text-slate-500">
+          Room aktif: <span className="text-violet-600">{activeRoomId}</span> ·{" "}
+          {socketStatus}
+        </p>
+      </div>
 
-        <ConversationBubble
-          align="right"
-          icon="🎤"
-          label="Orang Normal"
-          caption="Dari speech-to-text"
-          text={
-            transcript ||
-            "Tekan tombol bicara, lalu hasil suara akan muncul di sini."
-          }
-        />
+      <div className="flex min-h-80 flex-1 flex-col gap-4 overflow-y-auto rounded-[2rem] bg-slate-900 p-4">
+        {messages.length === 0 && (
+          <div className="flex flex-1 items-center justify-center text-center text-sm font-semibold leading-6 text-slate-400">
+            Belum ada pesan realtime. Kirim hasil robot/model atau tekan tombol
+            balas dengan suara.
+          </div>
+        )}
+
+        {messages.map((message, index) => (
+          <ConversationBubble
+            key={`${message.timestamp}-${index}`}
+            align={message.sender === "voice" ? "right" : "left"}
+            icon={message.sender === "voice" ? "🎤" : "🤟"}
+            label={
+              message.sender === "voice"
+                ? "Orang Normal"
+                : "Penyandang Disabilitas"
+            }
+            caption={
+              message.sender === "voice"
+                ? "Dari speech-to-text"
+                : "Dari robot/model"
+            }
+            text={message.text}
+            actionLabel={message.sender === "sign" ? "🔊 Bacakan" : undefined}
+            onAction={() => onSpeak(message.text)}
+          />
+        ))}
       </div>
 
       <div className="grid gap-3 rounded-[2rem] bg-white p-4 shadow-sm">
@@ -371,14 +535,23 @@ function ConversationScreen({
           />
         </label>
 
-        <button
-          type="button"
-          onClick={onStartListening}
-          disabled={isListening}
-          className="rounded-2xl bg-violet-600 px-5 py-4 text-base font-black text-white shadow-lg shadow-violet-200 transition hover:bg-violet-700 active:scale-[0.98] disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-500"
-        >
-          {isListening ? "🎤 Sedang Mendengarkan..." : "🎤 Balas dengan Suara"}
-        </button>
+        <div className="grid grid-cols-2 gap-3">
+          <button
+            type="button"
+            onClick={onSendSign}
+            className="rounded-2xl bg-emerald-500 px-4 py-4 text-sm font-black text-white shadow-lg shadow-emerald-100 transition hover:bg-emerald-600 active:scale-[0.98]"
+          >
+            🤟 Kirim Hasil
+          </button>
+          <button
+            type="button"
+            onClick={onStartListening}
+            disabled={isListening}
+            className="rounded-2xl bg-violet-600 px-4 py-4 text-sm font-black text-white shadow-lg shadow-violet-100 transition hover:bg-violet-700 active:scale-[0.98] disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-500"
+          >
+            {isListening ? "Mendengar..." : "🎤 Balas"}
+          </button>
+        </div>
         <p className="text-center text-sm font-semibold text-slate-500">
           {speechStatus}
         </p>
