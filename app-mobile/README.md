@@ -69,33 +69,47 @@ Jika PowerShell memblokir `npm.ps1`, gunakan `npm.cmd` seperti contoh di atas.
 6. Tekan `🤟 Kirim Hasil` atau `🎤 Balas` dari salah satu perangkat.
 7. Pesan akan muncul di semua perangkat yang join room yang sama.
 
-## Deploy online HTTPS
+## Menjalankan dengan Cloudflare Tunnel HTTPS
 
-> Catatan penting: Vercel cocok untuk deploy frontend React/Vite, tetapi tidak cocok untuk Socket.IO server yang harus berjalan terus. Untuk realtime multi-HP, deploy frontend ke Vercel dan deploy `server/index.js` ke layanan backend yang mendukung WebSocket seperti Render atau Railway.
+Gunakan cara ini jika tidak ingin deploy backend ke Render/Railway. Laptop tetap menjalankan frontend dan backend lokal, lalu Cloudflare Tunnel memberi URL HTTPS agar bisa dibuka dari banyak HP.
 
-### 1. Deploy Socket.IO backend
+Kamu membutuhkan 4 terminal aktif:
 
-Deploy folder `app-mobile` ke Render/Railway sebagai Web Service.
+1. Terminal backend Socket.IO.
+2. Terminal tunnel backend.
+3. Terminal frontend Vite.
+4. Terminal tunnel frontend.
 
-Pengaturan umum:
+### 1. Jalankan backend Socket.IO
 
-```text
-Root Directory : app-mobile
-Build Command  : npm install
-Start Command  : npm run server
-Port           : 3001 atau otomatis dari environment PORT
+```bash
+npm.cmd run server
 ```
 
-Setelah deploy, kamu akan mendapatkan URL backend HTTPS, misalnya:
+Backend berjalan di:
 
 ```text
-https://sign-language-socket.onrender.com
+http://localhost:3001
 ```
 
-Cek health endpoint:
+### 2. Buat tunnel untuk backend
+
+Di terminal lain, jalankan `cloudflared`:
+
+```bash
+D:\tools\cloudflared.exe tunnel --url http://localhost:3001
+```
+
+Salin URL HTTPS yang muncul, misalnya:
 
 ```text
-https://sign-language-socket.onrender.com/health
+https://backend-demo.trycloudflare.com
+```
+
+Cek di browser:
+
+```text
+https://backend-demo.trycloudflare.com/health
 ```
 
 Jika berhasil, output-nya:
@@ -104,59 +118,68 @@ Jika berhasil, output-nya:
 {"status":"ok"}
 ```
 
-### 2. Deploy frontend ke Vercel
+### 3. Jalankan frontend Vite
 
-Di Vercel:
-
-```text
-Framework Preset : Vite
-Root Directory   : app-mobile
-Build Command    : npm run build
-Output Directory : dist
+```bash
+npm.cmd run dev
 ```
 
-Tambahkan Environment Variable di Vercel:
+Frontend berjalan di:
 
 ```text
-VITE_SOCKET_URL=https://URL-BACKEND-SOCKET-KAMU
+http://localhost:5173
 ```
 
-Contoh:
+### 4. Buat tunnel untuk frontend
+
+Di terminal lain:
+
+```bash
+D:\tools\cloudflared.exe tunnel --url http://localhost:5173
+```
+
+Salin URL HTTPS frontend yang muncul, misalnya:
 
 ```text
-VITE_SOCKET_URL=https://sign-language-socket.onrender.com
+https://frontend-demo.trycloudflare.com
 ```
 
-Setelah itu klik deploy. Frontend akan mendapatkan URL HTTPS seperti:
+### 5. Buka app di HP
+
+Buka URL frontend dengan tambahan query `socketUrl` berisi URL backend tunnel:
 
 ```text
-https://sign-language-assistant.vercel.app
+https://frontend-demo.trycloudflare.com/?socketUrl=https%3A%2F%2Fbackend-demo.trycloudflare.com
 ```
 
-### 3. Atur CORS backend
-
-Setelah frontend Vercel jadi, sebaiknya tambahkan environment variable di backend:
+Format umumnya:
 
 ```text
-CLIENT_ORIGIN=https://URL-FRONTEND-VERCEL-KAMU
+URL_FRONTEND_TUNNEL/?socketUrl=URL_BACKEND_TUNNEL_YANG_DI-ENCODE
 ```
 
-Contoh:
+Cara mudah encode URL backend:
 
-```text
-CLIENT_ORIGIN=https://sign-language-assistant.vercel.app
-```
+- URL backend asli: `https://backend-demo.trycloudflare.com`
+- URL backend encoded: `https%3A%2F%2Fbackend-demo.trycloudflare.com`
 
-Lalu restart/redeploy backend.
+Setelah pertama kali dibuka, app menyimpan URL backend di browser HP. Selanjutnya kamu bisa membuka URL frontend tunnel biasa selama URL backend tunnel belum berubah.
 
-### 4. Uji di HP
+### 6. Uji banyak HP
 
-1. Buka URL Vercel di beberapa HP.
+1. Buka URL frontend tunnel yang sama di semua HP.
 2. Masuk ke `💬 Mode Percakapan`.
-3. Pastikan semua HP memakai room yang sama, misalnya `demo-ta`.
+3. Pastikan semua perangkat memakai room yang sama, default-nya `demo-ta`.
 4. Tekan `🎤 Balas` di salah satu HP.
-5. Karena URL sudah HTTPS, fitur microphone/speech-to-text lebih aman untuk browser HP.
-6. Hasil teks akan dikirim ke Socket.IO backend dan muncul di semua perangkat.
+5. Karena frontend dibuka lewat HTTPS Cloudflare Tunnel, microphone/speech-to-text di HP bisa berjalan.
+6. Pesan akan dikirim ke backend tunnel dan muncul di semua perangkat.
+
+### Catatan penting
+
+- Jangan tutup terminal backend, frontend, dan dua tunnel Cloudflare.
+- URL `trycloudflare.com` akan berubah setiap tunnel dijalankan ulang.
+- Jika URL backend berubah, buka ulang frontend dengan query `?socketUrl=URL_BACKEND_BARU`.
+- Jika muncul halaman warning Cloudflare, klik `Continue`.
 
 ## Endpoint integrasi model robot
 

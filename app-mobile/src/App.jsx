@@ -9,6 +9,7 @@ const MODES = {
 };
 
 const DEFAULT_ROOM_ID = "demo-ta";
+const SOCKET_URL_STORAGE_KEY = "sign-language-socket-url";
 
 function getDefaultSocketUrl() {
   const { protocol, hostname } = window.location;
@@ -26,7 +27,23 @@ function getDefaultSocketUrl() {
   return "";
 }
 
-const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || getDefaultSocketUrl();
+function getSocketUrl() {
+  const params = new URLSearchParams(window.location.search);
+  const socketUrlFromQuery = params.get("socketUrl");
+
+  if (socketUrlFromQuery) {
+    window.localStorage.setItem(SOCKET_URL_STORAGE_KEY, socketUrlFromQuery);
+    return socketUrlFromQuery;
+  }
+
+  return (
+    import.meta.env.VITE_SOCKET_URL ||
+    window.localStorage.getItem(SOCKET_URL_STORAGE_KEY) ||
+    getDefaultSocketUrl()
+  );
+}
+
+const SOCKET_URL = getSocketUrl();
 
 function App() {
   const socketRef = useRef(null);
@@ -47,7 +64,7 @@ function App() {
   useEffect(() => {
     if (!SOCKET_URL) {
       setSocketStatus(
-        "VITE_SOCKET_URL belum diatur. Isi dengan URL backend Socket.IO HTTPS.",
+        "URL backend Socket.IO belum diatur. Buka app dengan ?socketUrl=URL_BACKEND_TUNNEL.",
       );
       return;
     }
