@@ -89,7 +89,7 @@ function App() {
     });
 
     socket.on("message", (message) => {
-      setMessages((currentMessages) => [...currentMessages, message]);
+      setMessages((currentMessages) => [...currentMessages, message].slice(-2));
 
       if (message.sender === "sign") {
         setRecognizedText(message.text);
@@ -233,8 +233,8 @@ function App() {
   };
 
   return (
-    <main className="min-h-screen bg-slate-200 px-4 py-6 text-slate-950">
-      <section className="mx-auto flex min-h-[calc(100vh-3rem)] w-full max-w-md flex-col rounded-[2rem] bg-slate-950 p-3 shadow-2xl">
+    <main className="min-h-screen bg-slate-200 px-4 py-4 text-slate-950 sm:py-6">
+      <section className="mx-auto flex min-h-[calc(100vh-2rem)] w-full max-w-md flex-col rounded-[2rem] bg-slate-950 p-3 shadow-2xl sm:min-h-[calc(100vh-3rem)]">
         <div className="flex flex-1 flex-col rounded-[1.5rem] bg-slate-50 p-5">
           {mode !== MODES.MENU && <Header onBack={() => setMode(MODES.MENU)} />}
 
@@ -295,7 +295,7 @@ function App() {
 
 function Header({ onBack }) {
   return (
-    <header className="mb-5 flex items-center justify-between">
+    <header className="mb-3 flex items-center justify-between sm:mb-5">
       <button
         type="button"
         onClick={onBack}
@@ -516,51 +516,47 @@ function ConversationScreen({
   onStartListening,
 }) {
   return (
-    <div className="flex flex-1 flex-col gap-5">
+    <div className="flex flex-1 flex-col gap-3">
       <div>
-        <p className="text-sm font-semibold uppercase tracking-[0.2em] text-violet-600">
+        <p className="text-xs font-semibold uppercase tracking-[0.2em] text-violet-600">
           Mode Dua Arah
         </p>
-        <h1 className="mt-2 text-2xl font-black text-slate-950">
+        <h1 className="mt-1 text-xl font-black text-slate-950">
           💬 Mode Percakapan
         </h1>
-        <p className="mt-2 text-sm leading-6 text-slate-600">
-          Semua HP/laptop yang masuk room yang sama akan menerima chat realtime.
-        </p>
       </div>
 
-      <div className="rounded-[2rem] bg-white p-4 shadow-sm">
+      <div className="rounded-[1.5rem] bg-white p-3 shadow-sm">
         <label className="grid gap-2">
-          <span className="text-xs font-bold uppercase tracking-[0.2em] text-slate-500">
+          <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-500">
             Room Percakapan
           </span>
           <div className="flex gap-2">
             <input
               value={roomId}
               onChange={(event) => setRoomId(event.target.value)}
-              className="min-w-0 flex-1 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-bold outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
+              className="min-w-0 flex-1 rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-bold outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
               placeholder="demo-ta"
             />
             <button
               type="button"
               onClick={onJoinRoom}
-              className="rounded-2xl bg-slate-900 px-4 py-3 text-sm font-black text-white active:scale-95"
+              className="rounded-2xl bg-slate-900 px-3 py-2 text-sm font-black text-white active:scale-95"
             >
               Gabung
             </button>
           </div>
         </label>
-        <p className="mt-2 text-xs font-semibold text-slate-500">
+        <p className="mt-2 line-clamp-1 text-[11px] font-semibold text-slate-500">
           Room aktif: <span className="text-violet-600">{activeRoomId}</span> ·{" "}
           {socketStatus}
         </p>
       </div>
 
-      <div className="flex min-h-80 flex-1 flex-col gap-4 overflow-y-auto rounded-[2rem] bg-slate-900 p-4">
+      <div className="flex flex-1 flex-col justify-center gap-3 rounded-[1.75rem] bg-slate-900 p-3">
         {messages.length === 0 && (
           <div className="flex flex-1 items-center justify-center text-center text-sm font-semibold leading-6 text-slate-400">
-            Belum ada pesan realtime. Kirim hasil robot/model atau tekan tombol
-            balas dengan suara.
+            Belum ada pesan realtime.
           </div>
         )}
 
@@ -586,25 +582,25 @@ function ConversationScreen({
         ))}
       </div>
 
-      <div className="grid gap-3 rounded-[2rem] bg-white p-4 shadow-sm">
+      <div className="grid gap-2 rounded-[1.5rem] bg-white p-3 shadow-sm">
         <label className="grid gap-2">
-          <span className="text-xs font-bold uppercase tracking-[0.2em] text-slate-500">
+          <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-500">
             Simulasi hasil robot/model
           </span>
           <textarea
             value={recognizedText}
             onChange={(event) => setRecognizedText(event.target.value)}
-            rows={2}
-            className="w-full resize-none rounded-2xl border border-slate-200 bg-slate-50 p-3 text-base font-bold leading-6 outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
+            rows={1}
+            className="w-full resize-none rounded-2xl border border-slate-200 bg-slate-50 p-3 text-sm font-bold leading-5 outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
             placeholder="Hasil bahasa isyarat dari server akan muncul di sini"
           />
         </label>
 
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-2 gap-2">
           <button
             type="button"
             onClick={onSendSign}
-            className="rounded-2xl bg-emerald-500 px-4 py-4 text-sm font-black text-white shadow-lg shadow-emerald-100 transition hover:bg-emerald-600 active:scale-[0.98]"
+            className="rounded-2xl bg-emerald-500 px-3 py-3 text-sm font-black text-white shadow-lg shadow-emerald-100 transition hover:bg-emerald-600 active:scale-[0.98]"
           >
             🤟 Kirim Hasil
           </button>
@@ -612,12 +608,12 @@ function ConversationScreen({
             type="button"
             onClick={onStartListening}
             disabled={isListening}
-            className="rounded-2xl bg-violet-600 px-4 py-4 text-sm font-black text-white shadow-lg shadow-violet-100 transition hover:bg-violet-700 active:scale-[0.98] disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-500"
+            className="rounded-2xl bg-violet-600 px-3 py-3 text-sm font-black text-white shadow-lg shadow-violet-100 transition hover:bg-violet-700 active:scale-[0.98] disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-500"
           >
             {isListening ? "Mendengar..." : "🎤 Balas"}
           </button>
         </div>
-        <p className="text-center text-sm font-semibold text-slate-500">
+        <p className="line-clamp-2 text-center text-xs font-semibold leading-5 text-slate-500">
           {speechStatus}
         </p>
       </div>
@@ -640,16 +636,16 @@ function ConversationBubble({
   return (
     <div className={`flex ${isRight ? "justify-end" : "justify-start"}`}>
       <div
-        className={`max-w-[86%] rounded-[1.5rem] p-4 ${isRight ? "bg-sky-500 text-white" : "bg-white text-slate-950"}`}
+        className={`max-w-[88%] rounded-[1.25rem] p-3 ${isRight ? "bg-sky-500 text-white" : "bg-white text-slate-950"}`}
       >
         <div className="mb-2 flex items-center gap-2">
           <span
-            className={`flex h-9 w-9 items-center justify-center rounded-full text-xl ${isRight ? "bg-white/20" : "bg-emerald-100"}`}
+            className={`flex h-8 w-8 items-center justify-center rounded-full text-lg ${isRight ? "bg-white/20" : "bg-emerald-100"}`}
           >
             {icon}
           </span>
           <span>
-            <span className="block text-sm font-black">{label}</span>
+            <span className="block text-xs font-black">{label}</span>
             <span
               className={`block text-xs font-semibold ${isRight ? "text-sky-100" : "text-slate-500"}`}
             >
@@ -657,13 +653,13 @@ function ConversationBubble({
             </span>
           </span>
         </div>
-        <p className="text-lg font-black leading-7">{text}</p>
+        <p className="line-clamp-3 text-base font-black leading-6">{text}</p>
         {actionLabel && (
           <button
             type="button"
             onClick={onAction}
             disabled={disabled}
-            className="mt-3 rounded-full bg-emerald-500 px-4 py-2 text-sm font-black text-white transition active:scale-95 disabled:cursor-not-allowed disabled:bg-slate-300"
+            className="mt-2 rounded-full bg-emerald-500 px-3 py-2 text-xs font-black text-white transition active:scale-95 disabled:cursor-not-allowed disabled:bg-slate-300"
           >
             {actionLabel}
           </button>
