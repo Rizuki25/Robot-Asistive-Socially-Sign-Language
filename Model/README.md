@@ -15,6 +15,8 @@ Video Dataset → Ekstraksi Landmark → Preprocessing → Training BiLSTM → E
 
 ## 🚀 Quick Start
 
+> Semua perintah di bawah dijalankan dari dalam folder `Model/` ini (`cd Model`).
+
 ### 1. Install Dependensi
 ```bash
 pip install -r requirements.txt

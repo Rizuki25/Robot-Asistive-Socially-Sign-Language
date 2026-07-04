@@ -22,15 +22,15 @@ Thumbs.db
 .ipynb_checkpoints/
 
 # Dataset (terlalu besar untuk Git)
-dataset/raw/
-dataset/landmarks/
-dataset/processed/
+Model/dataset/raw/
+Model/dataset/landmarks/
+Model/dataset/processed/
 
 # Output models & logs
-outputs/models/*.pth
-outputs/logs/
-outputs/figures/
-outputs/results/
+Model/outputs/models/*.pth
+Model/outputs/logs/
+Model/outputs/figures/
+Model/outputs/results/
 
 # Misc
 *.log
