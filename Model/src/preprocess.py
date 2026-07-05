@@ -65,12 +65,16 @@ def load_landmarks(input_dir: str) -> tuple:
     return sequences, labels, label_to_idx
 
 
+LANDMARKS_PER_HAND = 21
+
+
 def normalize_data(sequences: list, method: str = "wrist_relative") -> list:
     """
     Normalisasi data landmark.
 
     Args:
-        sequences: List of numpy arrays, tiap elemen shape (num_frames, 21, 3)
+        sequences: List of numpy arrays, tiap elemen shape (num_frames, 21*num_hands, 3)
+                   (num_hands=1 untuk huruf, 2 untuk kata)
         method: "wrist_relative", "minmax", atau "zscore"
 
     Returns:
@@ -79,17 +83,31 @@ def normalize_data(sequences: list, method: str = "wrist_relative") -> list:
     normalized = []
 
     if method == "wrist_relative":
-        # Translation-invariant: center tiap frame ke landmark wrist (index 0)
-        # Scale-invariant: skala dengan jarak wrist -> middle_finger_mcp (index 9)
+        # Translation-invariant: center tiap tangan ke wrist-nya sendiri (landmark 0 dalam blok)
+        # Scale-invariant: skala dengan jarak wrist -> middle_finger_mcp (landmark 9 dalam blok)
+        # Diterapkan per-blok 21 landmark supaya mendukung 1 tangan (huruf) maupun 2 tangan (kata).
         for seq in sequences:
-            wrist = seq[:, 0:1, :]  # (num_frames, 1, 3)
-            centered = seq - wrist
+            num_landmarks_total = seq.shape[1]
+            assert num_landmarks_total % LANDMARKS_PER_HAND == 0, (
+                f"Jumlah landmark ({num_landmarks_total}) harus kelipatan {LANDMARKS_PER_HAND}"
+            )
+            num_hands = num_landmarks_total // LANDMARKS_PER_HAND
 
-            ref_point = centered[:, 9, :]  # (num_frames, 3)
-            ref_dist = np.linalg.norm(ref_point, axis=-1)  # (num_frames,)
-            ref_dist = np.where(ref_dist > 1e-6, ref_dist, 1.0)
+            seq_norm = np.zeros_like(seq)
+            for h in range(num_hands):
+                start = h * LANDMARKS_PER_HAND
+                end = start + LANDMARKS_PER_HAND
+                hand_block = seq[:, start:end, :]  # (num_frames, 21, 3)
 
-            seq_norm = centered / ref_dist[:, None, None]
+                wrist = hand_block[:, 0:1, :]  # (num_frames, 1, 3)
+                centered = hand_block - wrist
+
+                ref_point = centered[:, 9, :]  # (num_frames, 3)
+                ref_dist = np.linalg.norm(ref_point, axis=-1)  # (num_frames,)
+                ref_dist = np.where(ref_dist > 1e-6, ref_dist, 1.0)
+
+                seq_norm[:, start:end, :] = centered / ref_dist[:, None, None]
+
             normalized.append(seq_norm)
 
     elif method == "minmax":
@@ -294,12 +312,12 @@ def main():
         description="Preprocessing data landmark untuk training BiLSTM"
     )
     parser.add_argument(
-        "--input_dir", type=str, default="dataset/landmarks",
-        help="Path ke folder landmark (default: dataset/landmarks)"
+        "--input_dir", type=str, default="dataset/letters/landmarks",
+        help="Path ke folder landmark (default: dataset/letters/landmarks)"
     )
     parser.add_argument(
-        "--output_dir", type=str, default="dataset/processed",
-        help="Path ke folder output (default: dataset/processed)"
+        "--output_dir", type=str, default="dataset/letters/processed",
+        help="Path ke folder output (default: dataset/letters/processed)"
     )
     parser.add_argument(
         "--max_seq_length", type=int, default=90,

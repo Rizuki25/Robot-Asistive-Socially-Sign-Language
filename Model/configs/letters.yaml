@@ -1,16 +1,17 @@
 # =============================================================
 # Konfigurasi Project: Sign Language Recognition - BiLSTM
+# Task: HURUF (fingerspelling A-Z, 1 tangan)
 # =============================================================
 
 # --- Path ---
 paths:
-  raw_dataset: "dataset/raw"
-  landmarks: "dataset/landmarks"
-  processed: "dataset/processed"
-  models: "outputs/models"
-  logs: "outputs/logs"
-  figures: "outputs/figures"
-  results: "outputs/results"
+  raw_dataset: "dataset/letters/raw"
+  landmarks: "dataset/letters/landmarks"
+  processed: "dataset/letters/processed"
+  models: "outputs/letters/models"
+  logs: "outputs/letters/logs"
+  figures: "outputs/letters/figures"
+  results: "outputs/letters/results"
 
 # --- Ekstraksi Landmark ---
 landmark:

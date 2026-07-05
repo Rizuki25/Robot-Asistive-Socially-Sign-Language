@@ -2,12 +2,16 @@
 =============================================================
 Tahap 1: Ekstraksi Landmark dari Video Dataset
 =============================================================
-Mengekstrak 21 titik landmark tangan menggunakan MediaPipe Hands
+Mengekstrak titik landmark tangan menggunakan MediaPipe Hands
 dari setiap frame video. Output berupa file .npy per video.
 
-Input:  dataset/raw/{nama_kelas}/video.mp4
-Output: dataset/landmarks/{nama_kelas}/video.npy
-        Shape: (num_frames, 21, 3)
+Input:  dataset/{task}/raw/{nama_kelas}/video.mp4
+Output: dataset/{task}/landmarks/{nama_kelas}/video.npy
+        Shape: (num_frames, 21, 3) jika max_num_hands=1 (huruf)
+        Shape: (num_frames, 42, 3) jika max_num_hands=2 (kata)
+               — baris 0-20 = tangan kiri, baris 21-41 = tangan kanan
+               (slot tetap berdasarkan handedness, diisi nol jika
+               tangan tersebut tidak terdeteksi pada frame tertentu)
 =============================================================
 """
 
@@ -19,17 +23,20 @@ import mediapipe as mp
 from tqdm import tqdm
 
 
-def extract_landmarks_from_video(video_path: str, hands) -> np.ndarray:
+def extract_landmarks_from_video(video_path: str, hands, max_num_hands: int = 1) -> np.ndarray:
     """
     Ekstrak landmark tangan dari satu video.
 
     Args:
         video_path: Path ke file video
         hands: Instance MediaPipe Hands
+        max_num_hands: 1 (huruf, 1 tangan) atau 2 (kata, bisa 2 tangan).
+                       Saat 2, tiap tangan ditaruh di slot tetap berdasarkan
+                       handedness ([Left, Right]) supaya konsisten antar frame.
 
     Returns:
-        np.ndarray: Array landmark dengan shape (num_frames, 21, 3)
-                    Mengembalikan array kosong jika tidak ada tangan terdeteksi
+        np.ndarray: Array landmark, shape (num_frames, 21*max_num_hands, 3).
+                    Mengembalikan array kosong jika video tidak punya frame.
     """
     cap = cv2.VideoCapture(video_path)
     landmarks_sequence = []
@@ -43,18 +50,29 @@ def extract_landmarks_from_video(video_path: str, hands) -> np.ndarray:
         frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         results = hands.process(frame_rgb)
 
-        if results.multi_hand_landmarks:
-            # Ambil tangan pertama yang terdeteksi
-            hand_landmarks = results.multi_hand_landmarks[0]
-            frame_landmarks = []
-
-            for landmark in hand_landmarks.landmark:
-                frame_landmarks.append([landmark.x, landmark.y, landmark.z])
-
-            landmarks_sequence.append(frame_landmarks)
+        if max_num_hands == 1:
+            if results.multi_hand_landmarks:
+                # Ambil tangan pertama yang terdeteksi
+                hand_landmarks = results.multi_hand_landmarks[0]
+                frame_landmarks = [[lm.x, lm.y, lm.z] for lm in hand_landmarks.landmark]
+            else:
+                # Jika tidak ada tangan terdeteksi, isi dengan zeros
+                frame_landmarks = np.zeros((21, 3)).tolist()
         else:
-            # Jika tidak ada tangan terdeteksi, isi dengan zeros
-            landmarks_sequence.append(np.zeros((21, 3)).tolist())
+            # Slot tetap [Left, Right] berdasarkan handedness MediaPipe,
+            # supaya urutan tangan konsisten antar frame & antar video.
+            slots = {"Left": np.zeros((21, 3)), "Right": np.zeros((21, 3))}
+            if results.multi_hand_landmarks and results.multi_handedness:
+                for hand_landmarks, handedness in zip(
+                    results.multi_hand_landmarks, results.multi_handedness
+                ):
+                    label = handedness.classification[0].label
+                    slots[label] = np.array(
+                        [[lm.x, lm.y, lm.z] for lm in hand_landmarks.landmark]
+                    )
+            frame_landmarks = np.vstack([slots["Left"], slots["Right"]]).tolist()
+
+        landmarks_sequence.append(frame_landmarks)
 
     cap.release()
 
@@ -64,22 +82,28 @@ def extract_landmarks_from_video(video_path: str, hands) -> np.ndarray:
     return np.array(landmarks_sequence, dtype=np.float32)
 
 
-def process_dataset(input_dir: str, output_dir: str, overwrite: bool = False) -> None:
+def process_dataset(
+    input_dir: str,
+    output_dir: str,
+    overwrite: bool = False,
+    max_num_hands: int = 1
+) -> None:
     """
     Proses seluruh dataset video dan ekstrak landmark.
 
     Args:
-        input_dir: Path ke folder dataset/raw/
-        output_dir: Path ke folder output dataset/landmarks/
+        input_dir: Path ke folder dataset/{task}/raw/
+        output_dir: Path ke folder output dataset/{task}/landmarks/
         overwrite: Jika False (default), video yang sudah punya file .npy di
                    output_dir akan dilewati (skip) — hanya video baru yang diproses.
                    Jika True, semua video diekstrak ulang.
+        max_num_hands: 1 untuk huruf, 2 untuk kata (lihat extract_landmarks_from_video)
     """
     # Inisialisasi MediaPipe Hands
     mp_hands = mp.solutions.hands
     hands = mp_hands.Hands(
         static_image_mode=False,
-        max_num_hands=1,
+        max_num_hands=max_num_hands,
         min_detection_confidence=0.5,
         min_tracking_confidence=0.5
     )
@@ -127,7 +151,7 @@ def process_dataset(input_dir: str, output_dir: str, overwrite: bool = False) ->
                 continue
 
             # Ekstrak landmark
-            landmarks = extract_landmarks_from_video(video_path, hands)
+            landmarks = extract_landmarks_from_video(video_path, hands, max_num_hands=max_num_hands)
 
             if landmarks.size == 0:
                 print(f"  [WARN] Tidak ada landmark terdeteksi: {video_file}")
@@ -155,25 +179,33 @@ def main():
         description="Ekstraksi landmark tangan dari video dataset menggunakan MediaPipe"
     )
     parser.add_argument(
-        "--input_dir", type=str, default="dataset/raw",
-        help="Path ke folder dataset video mentah (default: dataset/raw)"
+        "--input_dir", type=str, default="dataset/letters/raw",
+        help="Path ke folder dataset video mentah (default: dataset/letters/raw)"
     )
     parser.add_argument(
-        "--output_dir", type=str, default="dataset/landmarks",
-        help="Path ke folder output landmark (default: dataset/landmarks)"
+        "--output_dir", type=str, default="dataset/letters/landmarks",
+        help="Path ke folder output landmark (default: dataset/letters/landmarks)"
     )
     parser.add_argument(
         "--overwrite", action="store_true",
         help="Ekstrak ulang semua video meski .npy sudah ada (default: skip video yang sudah diekstrak)"
     )
+    parser.add_argument(
+        "--max_num_hands", type=int, default=1, choices=[1, 2],
+        help="Jumlah tangan yang dideteksi: 1 untuk huruf, 2 untuk kata (default: 1)"
+    )
     args = parser.parse_args()
 
     print("[INFO] Memulai ekstraksi landmark...")
-    print(f"  Input     : {args.input_dir}")
-    print(f"  Output    : {args.output_dir}")
-    print(f"  Overwrite : {args.overwrite}")
+    print(f"  Input         : {args.input_dir}")
+    print(f"  Output        : {args.output_dir}")
+    print(f"  Overwrite     : {args.overwrite}")
+    print(f"  Max num hands : {args.max_num_hands}")
 
-    process_dataset(args.input_dir, args.output_dir, overwrite=args.overwrite)
+    process_dataset(
+        args.input_dir, args.output_dir,
+        overwrite=args.overwrite, max_num_hands=args.max_num_hands
+    )
 
 
 if __name__ == "__main__":

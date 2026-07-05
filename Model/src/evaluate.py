@@ -5,7 +5,7 @@ Tahap 4: Evaluasi Model
 Mengevaluasi performa model BiLSTM pada test set.
 Metrik: Accuracy, Precision, Recall, F1-Score, Confusion Matrix.
 
-Input:  outputs/models/best_model.pth + dataset/processed/test_*.pt
+Input:  outputs/{task}/models/best_model.pth + dataset/{task}/processed/test_*.pt
 Output: outputs/results/classification_report.txt
         outputs/results/evaluation_metrics.json
         outputs/figures/confusion_matrix.png
@@ -88,12 +88,12 @@ def plot_confusion_matrix(
 def main():
     parser = argparse.ArgumentParser(description="Evaluasi model BiLSTM")
     parser.add_argument(
-        "--model_path", type=str, default="outputs/models/best_model.pth",
-        help="Path ke model terbaik (default: outputs/models/best_model.pth)"
+        "--model_path", type=str, default="outputs/letters/models/best_model.pth",
+        help="Path ke model terbaik (default: outputs/letters/models/best_model.pth)"
     )
     parser.add_argument(
-        "--config", type=str, default="configs/config.yaml",
-        help="Path ke file konfigurasi (default: configs/config.yaml)"
+        "--config", type=str, default="configs/letters.yaml",
+        help="Path ke file konfigurasi (default: configs/letters.yaml)"
     )
     args = parser.parse_args()
 

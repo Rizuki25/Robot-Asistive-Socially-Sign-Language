@@ -140,8 +140,8 @@ def plot_training_curves(log_df: pd.DataFrame, output_dir: str) -> None:
 def main():
     parser = argparse.ArgumentParser(description="Training model BiLSTM")
     parser.add_argument(
-        "--config", type=str, default="configs/config.yaml",
-        help="Path ke file konfigurasi (default: configs/config.yaml)"
+        "--config", type=str, default="configs/letters.yaml",
+        help="Path ke file konfigurasi (default: configs/letters.yaml)"
     )
     args = parser.parse_args()
 

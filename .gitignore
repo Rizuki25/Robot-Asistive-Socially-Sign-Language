@@ -21,16 +21,18 @@ Thumbs.db
 # Jupyter Notebook checkpoints
 .ipynb_checkpoints/
 
-# Dataset (terlalu besar untuk Git)
-Model/dataset/raw/
-Model/dataset/landmarks/
-Model/dataset/processed/
+# Dataset (terlalu besar untuk Git) - per task (letters, words)
+Model/dataset/*/raw/*
+!Model/dataset/*/raw/.gitkeep
+Model/dataset/*/landmarks/
+Model/dataset/*/processed/
 
-# Output models & logs
-Model/outputs/models/*.pth
-Model/outputs/logs/
-Model/outputs/figures/
-Model/outputs/results/
+# Output models & logs - per task (letters, words)
+Model/outputs/*/models/*
+!Model/outputs/*/models/.gitkeep
+Model/outputs/*/logs/
+Model/outputs/*/figures/
+Model/outputs/*/results/
 
 # Misc
 *.log
