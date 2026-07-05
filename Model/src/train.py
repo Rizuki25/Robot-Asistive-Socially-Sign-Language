@@ -134,7 +134,7 @@ def plot_training_curves(log_df: pd.DataFrame, output_dir: str) -> None:
     plt.tight_layout()
     plt.savefig(os.path.join(output_dir, "training_curves.png"), dpi=150, bbox_inches="tight")
     plt.close()
-    print(f"  [SAVED] Training curves → {output_dir}/training_curves.png")
+    print(f"  [SAVED] Training curves -> {output_dir}/training_curves.png")
 
 
 def main():
@@ -264,7 +264,7 @@ def main():
                 model, optimizer, epoch, val_loss, val_acc,
                 os.path.join(models_dir, "best_model.pth")
             )
-            print(f"    ✓ Model terbaik disimpan (val_loss: {val_loss:.4f})")
+            print(f"    [OK] Model terbaik disimpan (val_loss: {val_loss:.4f})")
         else:
             patience_counter += 1
             if patience_counter >= patience:
@@ -281,7 +281,7 @@ def main():
     log_df = pd.DataFrame(training_log)
     log_path = os.path.join(logs_dir, "training_log.csv")
     log_df.to_csv(log_path, index=False)
-    print(f"\n  [SAVED] Training log → {log_path}")
+    print(f"\n  [SAVED] Training log -> {log_path}")
 
     # Plot training curves
     plot_training_curves(log_df, figures_dir)

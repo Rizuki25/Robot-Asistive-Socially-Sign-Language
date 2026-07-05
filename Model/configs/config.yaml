@@ -22,8 +22,9 @@ landmark:
 
 # --- Preprocessing ---
 preprocessing:
-  max_seq_length: 50            # Panjang sequence maksimum (padding/truncate)
-  normalization: "minmax"       # Metode normalisasi: "minmax" atau "zscore"
+  max_seq_length: 90            # Panjang sequence maksimum (padding/truncate)
+  normalization: "wrist_relative" # Metode normalisasi: "wrist_relative", "minmax", atau "zscore"
+  augment_factor: 3             # Jumlah salinan augmentasi per sample training (0 = nonaktif)
   test_size: 0.15               # Proporsi data test
   val_size: 0.15                # Proporsi data validation
   random_seed: 42               # Seed untuk reproducibility
@@ -33,7 +34,7 @@ model:
   input_size: 63                # 21 landmarks × 3 koordinat (x, y, z)
   hidden_size: 128              # Ukuran hidden state LSTM
   num_layers: 2                 # Jumlah layer LSTM
-  dropout: 0.3                  # Dropout rate
+  dropout: 0.5                  # Dropout rate
   bidirectional: true           # Gunakan BiLSTM
 
 # --- Training ---
@@ -41,7 +42,7 @@ training:
   batch_size: 32                # Ukuran batch
   epochs: 100                   # Maksimum epoch
   learning_rate: 0.001          # Learning rate awal
-  weight_decay: 0.0001          # L2 regularization
+  weight_decay: 0.0005          # L2 regularization
   patience: 10                  # Early stopping patience
   scheduler:
     type: "ReduceLROnPlateau"   # Tipe scheduler

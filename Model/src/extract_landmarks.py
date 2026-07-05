@@ -64,13 +64,16 @@ def extract_landmarks_from_video(video_path: str, hands) -> np.ndarray:
     return np.array(landmarks_sequence, dtype=np.float32)
 
 
-def process_dataset(input_dir: str, output_dir: str) -> None:
+def process_dataset(input_dir: str, output_dir: str, overwrite: bool = False) -> None:
     """
     Proses seluruh dataset video dan ekstrak landmark.
 
     Args:
         input_dir: Path ke folder dataset/raw/
         output_dir: Path ke folder output dataset/landmarks/
+        overwrite: Jika False (default), video yang sudah punya file .npy di
+                   output_dir akan dilewati (skip) — hanya video baru yang diproses.
+                   Jika True, semua video diekstrak ulang.
     """
     # Inisialisasi MediaPipe Hands
     mp_hands = mp.solutions.hands
@@ -96,6 +99,7 @@ def process_dataset(input_dir: str, output_dir: str) -> None:
     total_videos = 0
     total_success = 0
     total_empty = 0
+    total_skipped = 0
 
     for class_name in classes:
         class_input_dir = os.path.join(input_dir, class_name)
@@ -115,6 +119,13 @@ def process_dataset(input_dir: str, output_dir: str) -> None:
             total_videos += 1
             video_path = os.path.join(class_input_dir, video_file)
 
+            # Skip video yang sudah pernah diekstrak sebelumnya
+            output_filename = os.path.splitext(video_file)[0] + ".npy"
+            output_path = os.path.join(class_output_dir, output_filename)
+            if not overwrite and os.path.exists(output_path):
+                total_skipped += 1
+                continue
+
             # Ekstrak landmark
             landmarks = extract_landmarks_from_video(video_path, hands)
 
@@ -124,8 +135,6 @@ def process_dataset(input_dir: str, output_dir: str) -> None:
                 continue
 
             # Simpan sebagai .npy
-            output_filename = os.path.splitext(video_file)[0] + ".npy"
-            output_path = os.path.join(class_output_dir, output_filename)
             np.save(output_path, landmarks)
             total_success += 1
 
@@ -135,6 +144,7 @@ def process_dataset(input_dir: str, output_dir: str) -> None:
     print(f"[DONE] Ekstraksi Landmark Selesai")
     print(f"  Total video    : {total_videos}")
     print(f"  Berhasil       : {total_success}")
+    print(f"  Dilewati (skip): {total_skipped}")
     print(f"  Kosong/gagal   : {total_empty}")
     print(f"  Output dir     : {output_dir}")
     print(f"{'='*50}")
@@ -152,13 +162,18 @@ def main():
         "--output_dir", type=str, default="dataset/landmarks",
         help="Path ke folder output landmark (default: dataset/landmarks)"
     )
+    parser.add_argument(
+        "--overwrite", action="store_true",
+        help="Ekstrak ulang semua video meski .npy sudah ada (default: skip video yang sudah diekstrak)"
+    )
     args = parser.parse_args()
 
     print("[INFO] Memulai ekstraksi landmark...")
-    print(f"  Input  : {args.input_dir}")
-    print(f"  Output : {args.output_dir}")
+    print(f"  Input     : {args.input_dir}")
+    print(f"  Output    : {args.output_dir}")
+    print(f"  Overwrite : {args.overwrite}")
 
-    process_dataset(args.input_dir, args.output_dir)
+    process_dataset(args.input_dir, args.output_dir, overwrite=args.overwrite)
 
 
 if __name__ == "__main__":

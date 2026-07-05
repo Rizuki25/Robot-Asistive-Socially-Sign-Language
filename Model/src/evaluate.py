@@ -82,7 +82,7 @@ def plot_confusion_matrix(
     plt.tight_layout()
     plt.savefig(output_path, dpi=150, bbox_inches="tight")
     plt.close()
-    print(f"  [SAVED] Confusion matrix → {output_path}")
+    print(f"  [SAVED] Confusion matrix -> {output_path}")
 
 
 def main():
@@ -189,7 +189,7 @@ def main():
         f.write(f"  Recall    : {recall:.4f}\n")
         f.write(f"  F1-Score  : {f1:.4f}\n\n")
         f.write(f"Classification Report:\n{report}\n")
-    print(f"  [SAVED] Classification report → {report_path}")
+    print(f"  [SAVED] Classification report -> {report_path}")
 
     # Simpan metrik sebagai JSON
     metrics = {
@@ -206,7 +206,7 @@ def main():
     metrics_path = os.path.join(results_dir, "evaluation_metrics.json")
     with open(metrics_path, "w") as f:
         json.dump(metrics, f, indent=2)
-    print(f"  [SAVED] Evaluation metrics → {metrics_path}")
+    print(f"  [SAVED] Evaluation metrics -> {metrics_path}")
 
     # Plot confusion matrix
     cm_path = os.path.join(figures_dir, "confusion_matrix.png")

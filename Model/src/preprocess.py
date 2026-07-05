@@ -65,20 +65,34 @@ def load_landmarks(input_dir: str) -> tuple:
     return sequences, labels, label_to_idx
 
 
-def normalize_data(sequences: list, method: str = "minmax") -> list:
+def normalize_data(sequences: list, method: str = "wrist_relative") -> list:
     """
     Normalisasi data landmark.
 
     Args:
-        sequences: List of numpy arrays
-        method: "minmax" atau "zscore"
+        sequences: List of numpy arrays, tiap elemen shape (num_frames, 21, 3)
+        method: "wrist_relative", "minmax", atau "zscore"
 
     Returns:
-        list: Normalized sequences
+        list: Normalized sequences (shape sama seperti input)
     """
     normalized = []
 
-    if method == "minmax":
+    if method == "wrist_relative":
+        # Translation-invariant: center tiap frame ke landmark wrist (index 0)
+        # Scale-invariant: skala dengan jarak wrist -> middle_finger_mcp (index 9)
+        for seq in sequences:
+            wrist = seq[:, 0:1, :]  # (num_frames, 1, 3)
+            centered = seq - wrist
+
+            ref_point = centered[:, 9, :]  # (num_frames, 3)
+            ref_dist = np.linalg.norm(ref_point, axis=-1)  # (num_frames,)
+            ref_dist = np.where(ref_dist > 1e-6, ref_dist, 1.0)
+
+            seq_norm = centered / ref_dist[:, None, None]
+            normalized.append(seq_norm)
+
+    elif method == "minmax":
         for seq in sequences:
             seq_min = seq.min()
             seq_max = seq.max()
@@ -102,6 +116,115 @@ def normalize_data(sequences: list, method: str = "minmax") -> list:
         raise ValueError(f"Metode normalisasi tidak dikenal: {method}")
 
     return normalized
+
+
+def augment_sequence(seq: np.ndarray, rng: np.random.Generator) -> np.ndarray:
+    """
+    Hasilkan satu varian teraugmentasi dari sequence landmark (sudah dinormalisasi
+    wrist-relative). Semua transformasi menjaga identitas kelas (bukan mirror-flip):
+    rotasi kecil, scale jitter, gaussian noise, dan time-warp (variasi kecepatan).
+
+    Args:
+        seq: Array (num_frames, 21, 3), hasil normalize_data(method="wrist_relative")
+        rng: np.random.Generator untuk random reproducible
+
+    Returns:
+        np.ndarray: Sequence teraugmentasi, shape (num_frames_baru, 21, 3)
+    """
+    num_frames = seq.shape[0]
+
+    # 1. Time-warp: resample sumbu waktu dengan faktor kecepatan acak
+    speed_factor = rng.uniform(0.85, 1.15)
+    new_len = max(2, int(round(num_frames * speed_factor)))
+    orig_idx = np.linspace(0, num_frames - 1, num=num_frames)
+    new_idx = np.linspace(0, num_frames - 1, num=new_len)
+    warped = np.empty((new_len, seq.shape[1], seq.shape[2]), dtype=seq.dtype)
+    for lm in range(seq.shape[1]):
+        for coord in range(seq.shape[2]):
+            warped[:, lm, coord] = np.interp(new_idx, orig_idx, seq[:, lm, coord])
+
+    # 2. Rotasi kecil di bidang x,y (sekitar origin/wrist)
+    angle = np.deg2rad(rng.uniform(-15, 15))
+    cos_a, sin_a = np.cos(angle), np.sin(angle)
+    rot_matrix = np.array([[cos_a, -sin_a], [sin_a, cos_a]])
+    xy = warped[:, :, :2]
+    warped[:, :, :2] = xy @ rot_matrix.T
+
+    # 3. Scale jitter
+    scale = rng.uniform(0.85, 1.15)
+    warped = warped * scale
+
+    # 4. Gaussian noise kecil
+    noise = rng.normal(loc=0.0, scale=0.01, size=warped.shape)
+    warped = warped + noise
+
+    return warped.astype(np.float32)
+
+
+def augment_train_set(sequences: list, labels: list, factor: int = 3, random_seed: int = 42) -> tuple:
+    """
+    Perbanyak training set dengan menambahkan `factor` salinan teraugmentasi
+    per sample asli. Data asli tetap disertakan (tidak diganti).
+
+    Args:
+        sequences: List of arrays (num_frames, 21, 3), sudah dinormalisasi
+        labels: List of int label, sejajar dengan sequences
+        factor: Jumlah salinan augmentasi per sample asli
+        random_seed: Seed untuk reproducibility
+
+    Returns:
+        tuple: (augmented_sequences, augmented_labels)
+    """
+    rng = np.random.default_rng(random_seed)
+
+    all_sequences = list(sequences)
+    all_labels = list(labels)
+
+    for seq, label in zip(sequences, labels):
+        for _ in range(factor):
+            all_sequences.append(augment_sequence(seq, rng))
+            all_labels.append(label)
+
+    return all_sequences, all_labels
+
+
+def split_indices(
+    labels: list,
+    test_size: float = 0.15,
+    val_size: float = 0.15,
+    random_seed: int = 42
+) -> dict:
+    """
+    Bagi index sample menjadi train, validation, dan test set (stratified).
+
+    Args:
+        labels: List of integer labels
+        test_size: Proporsi test set
+        val_size: Proporsi validation set
+        random_seed: Random seed
+
+    Returns:
+        dict: {"train": idx_array, "val": idx_array, "test": idx_array}
+    """
+    labels = np.array(labels)
+    all_idx = np.arange(len(labels))
+
+    train_val_idx, test_idx = train_test_split(
+        all_idx,
+        test_size=test_size,
+        random_state=random_seed,
+        stratify=labels
+    )
+
+    val_ratio = val_size / (1 - test_size)
+    train_idx, val_idx = train_test_split(
+        train_val_idx,
+        test_size=val_ratio,
+        random_state=random_seed,
+        stratify=labels[train_val_idx]
+    )
+
+    return {"train": train_idx, "val": val_idx, "test": test_idx}
 
 
 def pad_or_truncate(sequences: list, max_seq_length: int) -> np.ndarray:
@@ -134,55 +257,6 @@ def pad_or_truncate(sequences: list, max_seq_length: int) -> np.ndarray:
         processed.append(seq_padded)
 
     return np.array(processed, dtype=np.float32)
-
-
-def split_data(
-    data: np.ndarray,
-    labels: list,
-    test_size: float = 0.15,
-    val_size: float = 0.15,
-    random_seed: int = 42
-) -> dict:
-    """
-    Bagi data menjadi train, validation, dan test set.
-
-    Args:
-        data: Array data (num_samples, max_seq_length, 63)
-        labels: List of integer labels
-        test_size: Proporsi test set
-        val_size: Proporsi validation set
-        random_seed: Random seed
-
-    Returns:
-        dict: Dictionary berisi split data dan labels
-    """
-    labels = np.array(labels)
-
-    # Split: train+val vs test
-    X_train_val, X_test, y_train_val, y_test = train_test_split(
-        data, labels,
-        test_size=test_size,
-        random_state=random_seed,
-        stratify=labels
-    )
-
-    # Split: train vs val
-    val_ratio = val_size / (1 - test_size)
-    X_train, X_val, y_train, y_val = train_test_split(
-        X_train_val, y_train_val,
-        test_size=val_ratio,
-        random_state=random_seed,
-        stratify=y_train_val
-    )
-
-    return {
-        "train_data": X_train,
-        "train_labels": y_train,
-        "val_data": X_val,
-        "val_labels": y_val,
-        "test_data": X_test,
-        "test_labels": y_test,
-    }
 
 
 def save_processed_data(split_data: dict, label_to_idx: dict, output_dir: str) -> None:
@@ -228,13 +302,17 @@ def main():
         help="Path ke folder output (default: dataset/processed)"
     )
     parser.add_argument(
-        "--max_seq_length", type=int, default=50,
-        help="Panjang sequence maksimum (default: 50)"
+        "--max_seq_length", type=int, default=90,
+        help="Panjang sequence maksimum (default: 90)"
     )
     parser.add_argument(
-        "--normalization", type=str, default="minmax",
-        choices=["minmax", "zscore"],
-        help="Metode normalisasi (default: minmax)"
+        "--normalization", type=str, default="wrist_relative",
+        choices=["wrist_relative", "minmax", "zscore"],
+        help="Metode normalisasi (default: wrist_relative)"
+    )
+    parser.add_argument(
+        "--augment_factor", type=int, default=3,
+        help="Jumlah salinan augmentasi per sample training (default: 3, 0 = nonaktif)"
     )
     parser.add_argument(
         "--test_size", type=float, default=0.15,
@@ -255,6 +333,7 @@ def main():
     print(f"  Output         : {args.output_dir}")
     print(f"  Max seq length : {args.max_seq_length}")
     print(f"  Normalisasi    : {args.normalization}")
+    print(f"  Augment factor : {args.augment_factor}")
     print(f"  Test size      : {args.test_size}")
     print(f"  Val size       : {args.val_size}")
 
@@ -267,29 +346,52 @@ def main():
         print("[ERROR] Tidak ada data landmark ditemukan!")
         return
 
-    # 2. Normalisasi
-    print(f"\n[STEP 2] Normalisasi ({args.normalization})...")
-    sequences = normalize_data(sequences, method=args.normalization)
-
-    # 3. Padding / Truncating
-    print(f"\n[STEP 3] Padding/Truncating (max_seq_length={args.max_seq_length})...")
-    data = pad_or_truncate(sequences, args.max_seq_length)
-    print(f"  Data shape: {data.shape}")
-
-    # 4. Split data
-    print(f"\n[STEP 4] Splitting data (train/val/test)...")
-    splits = split_data(
-        data, labels,
+    # 2. Split index (sebelum normalisasi/augmentasi, agar train/val/test independen)
+    print(f"\n[STEP 2] Splitting index (train/val/test)...")
+    idx_splits = split_indices(
+        labels,
         test_size=args.test_size,
         val_size=args.val_size,
         random_seed=args.random_seed
     )
-    print(f"  Train : {splits['train_data'].shape[0]} samples")
-    print(f"  Val   : {splits['val_data'].shape[0]} samples")
-    print(f"  Test  : {splits['test_data'].shape[0]} samples")
 
-    # 5. Simpan
-    print(f"\n[STEP 5] Menyimpan data processed...")
+    labels_arr = np.array(labels)
+    split_sequences = {
+        split: [sequences[i] for i in idx]
+        for split, idx in idx_splits.items()
+    }
+    split_labels = {
+        split: labels_arr[idx].tolist()
+        for split, idx in idx_splits.items()
+    }
+    print(f"  Train : {len(split_sequences['train'])} samples")
+    print(f"  Val   : {len(split_sequences['val'])} samples")
+    print(f"  Test  : {len(split_sequences['test'])} samples")
+
+    # 3. Normalisasi per split
+    print(f"\n[STEP 3] Normalisasi ({args.normalization})...")
+    for split in ["train", "val", "test"]:
+        split_sequences[split] = normalize_data(split_sequences[split], method=args.normalization)
+
+    # 4. Augmentasi (hanya pada train split)
+    if args.augment_factor > 0:
+        print(f"\n[STEP 4] Augmentasi train set (factor={args.augment_factor})...")
+        split_sequences["train"], split_labels["train"] = augment_train_set(
+            split_sequences["train"], split_labels["train"],
+            factor=args.augment_factor, random_seed=args.random_seed
+        )
+        print(f"  Train (setelah augmentasi): {len(split_sequences['train'])} samples")
+
+    # 5. Padding / Truncating per split
+    print(f"\n[STEP 5] Padding/Truncating (max_seq_length={args.max_seq_length})...")
+    splits = {}
+    for split in ["train", "val", "test"]:
+        splits[f"{split}_data"] = pad_or_truncate(split_sequences[split], args.max_seq_length)
+        splits[f"{split}_labels"] = np.array(split_labels[split])
+        print(f"  {split.capitalize():5s}: {splits[f'{split}_data'].shape}")
+
+    # 6. Simpan
+    print(f"\n[STEP 6] Menyimpan data processed...")
     save_processed_data(splits, label_to_idx, args.output_dir)
 
     print(f"\n{'='*50}")
