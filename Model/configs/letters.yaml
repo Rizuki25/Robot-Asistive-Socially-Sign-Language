@@ -1,6 +1,6 @@
 # =============================================================
 # Konfigurasi Project: Sign Language Recognition - BiLSTM
-# Task: HURUF (fingerspelling A-Z, 1 tangan)
+# Task: HURUF (fingerspelling A-Z, BISINDO - campuran 1 & 2 tangan)
 # =============================================================
 
 # --- Path ---
@@ -15,7 +15,7 @@ paths:
 
 # --- Ekstraksi Landmark ---
 landmark:
-  max_num_hands: 1              # Jumlah tangan yang dideteksi
+  max_num_hands: 2              # Jumlah tangan yang dideteksi (BISINDO: sebagian huruf 2 tangan)
   min_detection_confidence: 0.5 # Confidence minimum deteksi tangan
   min_tracking_confidence: 0.5  # Confidence minimum tracking
   num_landmarks: 21             # Jumlah titik landmark per tangan
@@ -32,7 +32,7 @@ preprocessing:
 
 # --- Model BiLSTM ---
 model:
-  input_size: 63                # 21 landmarks × 3 koordinat (x, y, z)
+  input_size: 126               # 2 tangan x 21 landmarks x 3 koordinat (x, y, z)
   hidden_size: 128              # Ukuran hidden state LSTM
   num_layers: 2                 # Jumlah layer LSTM
   dropout: 0.5                  # Dropout rate

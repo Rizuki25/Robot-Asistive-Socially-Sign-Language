@@ -4,6 +4,15 @@
 
 Project ini membangun sistem pengenalan bahasa isyarat menggunakan arsitektur **Bidirectional LSTM (BiLSTM)** dengan **PyTorch**. Pipeline dimulai dari video dataset mentah hingga model yang siap digunakan untuk prediksi.
 
+Project ini terdiri dari **dua model independen** yang berbagi satu codebase (`src/`) yang sama:
+
+| Task | Kelas | Tangan | Config | Status |
+|------|-------|--------|--------|--------|
+| **Huruf** (fingerspelling) | A-Z (26 kelas) | 1 tangan | `configs/letters.yaml` | ✅ Dataset & model sudah ada |
+| **Kata** (isyarat kata) | TBD | Bisa 2 tangan | `configs/words.yaml` | ⏳ Dataset belum tersedia |
+
+Kedua task punya `dataset/`, `outputs/`, dan `config.yaml` sendiri-sendiri (lihat [Struktur Folder](#struktur-folder-project)) — label encoder-nya terpisah total, jadi kelas huruf dan kata **tidak pernah tercampur** dalam satu output layer. Script di `src/` sama persis untuk keduanya; yang membedakan cuma argumen CLI/`--config` yang dipakai.
+
 ---
 
 ## Alur Kerja (Workflow Pipeline)
@@ -15,31 +24,45 @@ Project ini membangun sistem pengenalan bahasa isyarat menggunakan arsitektur **
 └──────────────┘    └──────────────────┘    └─────────────────────┘    └────────────────┘
 ```
 
+Alur ini dijalankan **terpisah** untuk task huruf dan task kata (dataset/output berbeda folder).
+
 ---
 
 ## Tahap 1: Ekstraksi Landmark (`src/extract_landmarks.py`)
 
 ### Tujuan
-Mengekstrak 21 titik landmark tangan dari setiap frame video menggunakan **MediaPipe Hands**.
+Mengekstrak titik landmark tangan dari setiap frame video menggunakan **MediaPipe Hands**.
 
 ### Input
-- Video dataset dalam format `.mp4` / `.avi` yang tersimpan di `dataset/raw/`
-- Struktur folder: `dataset/raw/{nama_kelas}/video1.mp4`
+- Video dataset dalam format `.mp4` / `.avi` / `.mov` / `.mkv` / `.wmv`
+- Struktur folder: `dataset/{task}/raw/{nama_kelas}/video1.mp4`
+  - Huruf: `dataset/letters/raw/{A,B,...,Z}/`
+  - Kata: `dataset/words/raw/{nama_kata}/`
 
 ### Proses
 1. Baca setiap video frame-by-frame menggunakan OpenCV
-2. Deteksi tangan menggunakan MediaPipe Hands
-3. Ekstrak 21 titik landmark (x, y, z) per frame
-4. Simpan sequence landmark per video sebagai file `.npy`
+2. Deteksi tangan menggunakan MediaPipe Hands (`max_num_hands` bisa 1 atau 2)
+3. Kalau `max_num_hands=2`: tiap tangan ditaruh di slot tetap **[Left, Right]** berdasarkan `results.multi_handedness` (konsisten antar frame); tangan yang tak terdeteksi di suatu frame diisi nol, bukan di-skip
+4. Ekstrak 21 titik landmark (x, y, z) per tangan per frame
+5. Simpan sequence landmark per video sebagai file `.npy`
+6. **Incremental by default**: video yang `.npy`-nya sudah ada di `output_dir` otomatis di-skip (pakai `--overwrite` untuk paksa ekstrak ulang semua)
 
 ### Output
-- File `.npy` berisi array landmark per video
-- Disimpan di `dataset/landmarks/{nama_kelas}/video1.npy`
-- Shape per file: `(num_frames, 21, 3)` → 21 landmark × 3 koordinat (x, y, z)
+- File `.npy` berisi array landmark per video, disimpan di `dataset/{task}/landmarks/{nama_kelas}/video1.npy`
+- Shape per file: `(num_frames, 21 * max_num_hands, 3)`
+  - `max_num_hands=1` (huruf) → `(num_frames, 21, 3)`
+  - `max_num_hands=2` (kata) → `(num_frames, 42, 3)`
 
 ### Cara Menjalankan
 ```bash
-python src/extract_landmarks.py --input_dir dataset/raw --output_dir dataset/landmarks
+# Huruf (1 tangan, default)
+python src/extract_landmarks.py --input_dir dataset/letters/raw --output_dir dataset/letters/landmarks
+
+# Kata (2 tangan)
+python src/extract_landmarks.py --input_dir dataset/words/raw --output_dir dataset/words/landmarks --max_num_hands 2
+
+# Paksa ekstrak ulang semua video (bukan cuma yang baru)
+python src/extract_landmarks.py --input_dir dataset/letters/raw --output_dir dataset/letters/landmarks --overwrite
 ```
 
 ---
@@ -50,18 +73,18 @@ python src/extract_landmarks.py --input_dir dataset/raw --output_dir dataset/lan
 Mempersiapkan data landmark agar siap dilatih oleh model BiLSTM.
 
 ### Input
-- File `.npy` landmark dari Tahap 1 di `dataset/landmarks/`
+- File `.npy` landmark dari Tahap 1 di `dataset/{task}/landmarks/`
 
 ### Proses
-1. **Normalisasi Data**: Normalisasi koordinat landmark (min-max atau z-score)
-2. **Penyusunan Sequence (Time Series)**: Padding/truncating sequence agar panjang seragam (`MAX_SEQ_LENGTH`)
-3. **Flatten Landmark**: Reshape dari `(seq_len, 21, 3)` menjadi `(seq_len, 63)` sebagai input BiLSTM
-4. **Label Encoding**: Konversi nama kelas menjadi integer label
-5. **Pembagian Data**: Split menjadi Train/Validation/Test set (misal: 70/15/15)
+1. **Split index dulu** (stratified per kelas, train/val/test) — dilakukan **sebelum** normalisasi & augmentasi supaya val/test tidak pernah tersentuh data sintetis
+2. **Normalisasi** (`--normalization wrist_relative`, default): tiap tangan di-center ke wrist-nya sendiri (translation-invariant) lalu diskalakan dengan jarak wrist→pangkal jari tengah (scale-invariant). Diterapkan per-blok 21 landmark, jadi otomatis mendukung 1 tangan (huruf) maupun 2 tangan (kata). Opsi lama `minmax`/`zscore` masih tersedia untuk eksperimen.
+3. **Augmentasi (hanya pada train split)** — `--augment_factor N` (default 3) menghasilkan N salinan teraugmentasi per sample training lewat kombinasi rotasi kecil, scale jitter, gaussian noise, dan time-warp (variasi kecepatan). Val/test **tidak** diaugmentasi.
+4. **Padding/Truncating**: sequence disamakan panjangnya ke `--max_seq_length` (cek dulu distribusi panjang video asli sebelum menentukan angka ini — jangan asal pakai default)
+5. **Flatten Landmark**: reshape dari `(seq_len, 21*num_hands, 3)` menjadi `(seq_len, 63*num_hands)` sebagai input BiLSTM
+6. **Label Encoding**: konversi nama kelas menjadi integer label
 
 ### Output
-- File `.pt` (PyTorch tensors) untuk train, val, dan test set
-- Disimpan di `dataset/processed/`
+- File `.pt` (PyTorch tensors) untuk train, val, dan test set, disimpan di `dataset/{task}/processed/`
   - `train_data.pt`, `train_labels.pt`
   - `val_data.pt`, `val_labels.pt`
   - `test_data.pt`, `test_labels.pt`
@@ -69,7 +92,11 @@ Mempersiapkan data landmark agar siap dilatih oleh model BiLSTM.
 
 ### Cara Menjalankan
 ```bash
-python src/preprocess.py --input_dir dataset/landmarks --output_dir dataset/processed --max_seq_length 50 --test_size 0.15 --val_size 0.15
+# Huruf
+python src/preprocess.py --input_dir dataset/letters/landmarks --output_dir dataset/letters/processed --max_seq_length 90 --normalization wrist_relative --augment_factor 3
+
+# Kata (setelah dataset kata tersedia — cek dulu statistik panjang video sebelum set max_seq_length)
+python src/preprocess.py --input_dir dataset/words/landmarks --output_dir dataset/words/processed --max_seq_length <sesuaikan> --normalization wrist_relative --augment_factor 3
 ```
 
 ---
@@ -84,7 +111,7 @@ Membangun dan melatih model BiLSTM untuk klasifikasi bahasa isyarat.
 
 ### Arsitektur Model (`src/model.py`)
 ```
-Input (batch, seq_len, 63)
+Input (batch, seq_len, input_size)   # input_size = 63 (huruf, 1 tangan) atau 126 (kata, 2 tangan)
         │
   ┌─────▼─────┐
   │  BiLSTM    │  ← Bidirectional LSTM layer(s)
@@ -106,29 +133,35 @@ Input (batch, seq_len, 63)
 ```
 
 ### Proses Pelatihan
-1. Load data dari `dataset/processed/`
+1. Load data dari `dataset/{task}/processed/`
 2. Buat PyTorch `DataLoader` untuk train, val, dan test
 3. Definisikan model BiLSTM, loss function (`CrossEntropyLoss`), dan optimizer (`Adam`)
 4. Training loop dengan early stopping dan learning rate scheduler
 5. Simpan model terbaik berdasarkan validation loss
 
-### Hyperparameter (dikonfigurasi di `configs/config.yaml`)
+### Hyperparameter (dikonfigurasi di `configs/letters.yaml` / `configs/words.yaml`)
+- `input_size`: 63 untuk huruf (1 tangan), 126 untuk kata (2 tangan) — harus cocok dengan `max_num_hands` yang dipakai saat ekstraksi
 - `hidden_size`: Ukuran hidden state LSTM (default: 128)
 - `num_layers`: Jumlah layer LSTM (default: 2)
-- `dropout`: Dropout rate (default: 0.3)
+- `dropout`: Dropout rate (default: 0.5)
+- `weight_decay`: L2 regularization (default: 0.0005)
 - `learning_rate`: Learning rate (default: 0.001)
 - `batch_size`: Batch size (default: 32)
 - `epochs`: Maksimum epoch (default: 100)
 - `patience`: Early stopping patience (default: 10)
 
 ### Output
-- Model terlatih: `outputs/models/best_model.pth`
-- Training log: `outputs/logs/training_log.csv`
-- Loss & accuracy curves: `outputs/figures/`
+- Model terlatih: `outputs/{task}/models/best_model.pth`
+- Training log: `outputs/{task}/logs/training_log.csv`
+- Loss & accuracy curves: `outputs/{task}/figures/`
 
 ### Cara Menjalankan
 ```bash
-python src/train.py --config configs/config.yaml
+# Huruf
+python src/train.py --config configs/letters.yaml
+
+# Kata
+python src/train.py --config configs/words.yaml
 ```
 
 ---
@@ -139,8 +172,8 @@ python src/train.py --config configs/config.yaml
 Mengevaluasi performa model pada test set.
 
 ### Input
-- Model terlatih dari `outputs/models/best_model.pth`
-- Test data dari `dataset/processed/`
+- Model terlatih dari `outputs/{task}/models/best_model.pth`
+- Test data dari `dataset/{task}/processed/`
 
 ### Metrik Evaluasi
 1. **Accuracy** - Akurasi keseluruhan
@@ -150,72 +183,76 @@ Mengevaluasi performa model pada test set.
 5. **Confusion Matrix** - Visualisasi prediksi vs aktual
 
 ### Output
-- Classification report: `outputs/results/classification_report.txt`
-- Confusion matrix plot: `outputs/figures/confusion_matrix.png`
-- Detailed metrics: `outputs/results/evaluation_metrics.json`
+- Classification report: `outputs/{task}/results/classification_report.txt`
+- Confusion matrix plot: `outputs/{task}/figures/confusion_matrix.png`
+- Detailed metrics: `outputs/{task}/results/evaluation_metrics.json`
 
 ### Cara Menjalankan
 ```bash
-python src/evaluate.py --model_path outputs/models/best_model.pth --config configs/config.yaml
+# Huruf
+python src/evaluate.py --model_path outputs/letters/models/best_model.pth --config configs/letters.yaml
+
+# Kata
+python src/evaluate.py --model_path outputs/words/models/best_model.pth --config configs/words.yaml
 ```
+
+### Hasil Terkini (Huruf)
+Accuracy 87.82% / Precision 0.9125 / Recall 0.8782 / F1-Score 0.8808 (test set, 156 sampel, 26 kelas) — dicapai setelah normalisasi wrist-relative, augmentasi 4x pada train split, dan regularisasi (dropout 0.5, weight_decay 0.0005).
 
 ---
 
 ## Struktur Folder Project
 
 ```
-SignLanguage_BiLSTM/
+Model/
 │
 ├── WORKFLOW.md                  # ← File ini (dokumentasi alur kerja)
 ├── README.md                    # Dokumentasi umum project
 ├── requirements.txt             # Daftar dependensi Python
-├── .gitignore                   # File yang diabaikan Git
 │
 ├── configs/
-│   └── config.yaml              # Konfigurasi hyperparameter & path
+│   ├── letters.yaml              # Konfigurasi task huruf (path, hyperparameter)
+│   └── words.yaml                # Konfigurasi task kata (path, hyperparameter)
 │
 ├── dataset/
-│   ├── raw/                     # Video mentah (dikelompokkan per kelas)
-│   │   ├── halo/
-│   │   │   ├── video001.mp4
-│   │   │   └── ...
-│   │   ├── terima_kasih/
-│   │   └── ...
+│   ├── letters/
+│   │   ├── raw/                 # Video mentah huruf, per kelas: raw/{A,B,...,Z}/
+│   │   ├── landmarks/           # Hasil ekstraksi landmark (.npy), shape (frames, 21, 3)
+│   │   └── processed/           # Data siap latih (train/val/test .pt) + label_encoder.json
 │   │
-│   ├── landmarks/               # Hasil ekstraksi landmark (.npy)
-│   │   ├── halo/
-│   │   │   ├── video001.npy
-│   │   │   └── ...
-│   │   └── ...
-│   │
-│   └── processed/               # Data siap latih (train/val/test .pt)
-│       ├── train_data.pt
-│       ├── train_labels.pt
-│       ├── val_data.pt
-│       ├── val_labels.pt
-│       ├── test_data.pt
-│       ├── test_labels.pt
-│       └── label_encoder.json
+│   └── words/
+│       ├── raw/                 # Video mentah kata, per kelas: raw/{nama_kata}/ (belum ada isinya)
+│       ├── landmarks/           # Hasil ekstraksi landmark (.npy), shape (frames, 42, 3)
+│       └── processed/           # Data siap latih (train/val/test .pt) + label_encoder.json
 │
 ├── src/
 │   ├── __init__.py
-│   ├── extract_landmarks.py     # Tahap 1: Ekstraksi landmark MediaPipe
-│   ├── preprocess.py            # Tahap 2: Preprocessing & split data
-│   ├── model.py                 # Definisi arsitektur BiLSTM
-│   ├── dataset_loader.py        # PyTorch Dataset & DataLoader
-│   ├── train.py                 # Tahap 3: Training loop
-│   ├── evaluate.py              # Tahap 4: Evaluasi model
+│   ├── extract_landmarks.py     # Tahap 1: Ekstraksi landmark MediaPipe (shared, dipakai kedua task)
+│   ├── preprocess.py            # Tahap 2: Normalisasi, augmentasi, split data (shared)
+│   ├── model.py                 # Definisi arsitektur BiLSTM (shared)
+│   ├── dataset_loader.py        # PyTorch Dataset & DataLoader (shared)
+│   ├── train.py                 # Tahap 3: Training loop (shared)
+│   ├── evaluate.py              # Tahap 4: Evaluasi model (shared)
 │   └── utils.py                 # Fungsi utilitas umum
 │
 ├── notebooks/
 │   └── exploration.ipynb        # Notebook eksplorasi & visualisasi
 │
 └── outputs/
-    ├── models/                  # Model tersimpan (.pth)
-    ├── logs/                    # Training logs
-    ├── figures/                 # Grafik & visualisasi
-    └── results/                 # Hasil evaluasi
+    ├── letters/
+    │   ├── models/               # best_model.pth huruf
+    │   ├── logs/                 # training_log.csv huruf
+    │   ├── figures/              # training_curves.png, confusion_matrix.png huruf
+    │   └── results/              # classification_report.txt, evaluation_metrics.json huruf
+    │
+    └── words/
+        ├── models/
+        ├── logs/
+        ├── figures/
+        └── results/
 ```
+
+`dataset/*/raw|landmarks|processed/` dan `outputs/*/models|logs|figures|results/` di-gitignore (terlalu besar untuk Git) — hanya struktur folder (`.gitkeep`) yang ikut ter-commit.
 
 ---
 
@@ -225,17 +262,17 @@ SignLanguage_BiLSTM/
 # 1. Install dependensi
 pip install -r requirements.txt
 
-# 2. Ekstraksi landmark dari video dataset
-python src/extract_landmarks.py --input_dir dataset/raw --output_dir dataset/landmarks
+# --- Task Huruf ---
+python src/extract_landmarks.py --input_dir dataset/letters/raw --output_dir dataset/letters/landmarks
+python src/preprocess.py --input_dir dataset/letters/landmarks --output_dir dataset/letters/processed --max_seq_length 90 --normalization wrist_relative --augment_factor 3
+python src/train.py --config configs/letters.yaml
+python src/evaluate.py --model_path outputs/letters/models/best_model.pth --config configs/letters.yaml
 
-# 3. Preprocessing data (normalisasi, padding, split)
-python src/preprocess.py --input_dir dataset/landmarks --output_dir dataset/processed
-
-# 4. Training model BiLSTM
-python src/train.py --config configs/config.yaml
-
-# 5. Evaluasi model
-python src/evaluate.py --model_path outputs/models/best_model.pth --config configs/config.yaml
+# --- Task Kata (setelah video kata ditaruh di dataset/words/raw/{nama_kata}/) ---
+python src/extract_landmarks.py --input_dir dataset/words/raw --output_dir dataset/words/landmarks --max_num_hands 2
+python src/preprocess.py --input_dir dataset/words/landmarks --output_dir dataset/words/processed --max_seq_length <sesuaikan> --normalization wrist_relative --augment_factor 3
+python src/train.py --config configs/words.yaml
+python src/evaluate.py --model_path outputs/words/models/best_model.pth --config configs/words.yaml
 ```
 
 ---
@@ -258,11 +295,15 @@ python src/evaluate.py --model_path outputs/models/best_model.pth --config confi
 
 ## Catatan Penting untuk AI Agent
 
-1. **Dataset sudah tersedia** — Tidak perlu mengunduh atau membuat dataset. Cukup tempatkan video di `dataset/raw/{nama_kelas}/`.
-2. **Framework: PyTorch** — Semua pemodelan dan training menggunakan PyTorch, **BUKAN TensorFlow/Keras**.
-3. **MediaPipe Hands** — Gunakan `mediapipe.solutions.hands` untuk ekstraksi 21 titik landmark.
-4. **Koordinat Landmark** — Setiap landmark memiliki 3 nilai: `(x, y, z)`, total 63 fitur per frame.
-5. **Sequence Length** — Perlu padding/truncating agar semua video memiliki panjang sequence yang sama.
-6. **BiLSTM** — Model menggunakan `bidirectional=True` pada `nn.LSTM` PyTorch.
-7. **Data Split** — Train/Val/Test disimpan dalam folder `dataset/processed/`, bukan folder terpisah.
-8. **Reproducibility** — Selalu set random seed untuk reproducibility.
+1. **Dua task independen** — huruf (`configs/letters.yaml`, `dataset/letters/`, `outputs/letters/`) dan kata (`configs/words.yaml`, `dataset/words/`, `outputs/words/`). Jangan pernah gabungkan keduanya jadi satu model/label encoder.
+2. **Dataset kata belum ada** — folder `dataset/words/raw/` masih kosong (cuma `.gitkeep`). Jangan asumsikan ada data kata sebelum dicek langsung.
+3. **`max_num_hands`** — huruf pakai 1 tangan (`input_size=63`), kata bisa pakai 2 tangan (`input_size=126`). Nilai ini harus konsisten antara `extract_landmarks.py --max_num_hands` dan `model.input_size` di config, kalau tidak training/inference akan mismatch shape.
+4. **Framework: PyTorch** — Semua pemodelan dan training menggunakan PyTorch, **BUKAN TensorFlow/Keras**.
+5. **MediaPipe Hands** — Gunakan `mediapipe.solutions.hands` untuk ekstraksi landmark. Saat 2 tangan, urutan slot tetap [Left, Right] berdasarkan `multi_handedness`, tangan tak terdeteksi diisi nol per frame (bukan skip video).
+6. **Normalisasi default: wrist-relative** — bukan minmax/zscore. Diterapkan per-blok 21 landmark (per tangan), bukan global.
+7. **Augmentasi hanya di train split** — val/test harus selalu berupa data asli, tidak pernah diaugmentasi, supaya metrik evaluasi valid.
+8. **Sequence Length** — Perlu padding/truncating agar semua video memiliki panjang sequence yang sama; cek dulu distribusi panjang video sebelum menentukan `max_seq_length` (jangan asal pakai default, terutama untuk dataset kata yang belum pernah dicek).
+9. **BiLSTM** — Model menggunakan `bidirectional=True` pada `nn.LSTM` PyTorch.
+10. **Data Split** — Train/Val/Test disimpan dalam folder `dataset/{task}/processed/`, bukan folder terpisah. Split dilakukan berbasis index **sebelum** normalisasi/augmentasi.
+11. **Reproducibility** — Selalu set random seed untuk reproducibility.
+12. **Ekstraksi landmark bersifat incremental** — video yang `.npy`-nya sudah ada otomatis di-skip; pakai `--overwrite` untuk paksa ekstrak ulang semua.
