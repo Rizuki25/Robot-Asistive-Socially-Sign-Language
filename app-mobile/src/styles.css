@@ -22,3 +22,19 @@ input,
 textarea {
   font: inherit;
 }
+
+/* Animasi batang gelombang saat mendengarkan (Suara → Teks) */
+@keyframes stt-wave {
+  0%,
+  100% {
+    transform: scaleY(0.3);
+  }
+  50% {
+    transform: scaleY(1);
+  }
+}
+
+.stt-wave-bar {
+  transform-origin: center;
+  animation: stt-wave 1s ease-in-out infinite;
+}
