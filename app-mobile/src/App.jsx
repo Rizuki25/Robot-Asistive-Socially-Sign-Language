@@ -90,7 +90,9 @@ function App() {
     });
 
     socket.on("message", (message) => {
-      setMessages((currentMessages) => [...currentMessages, message].slice(-2));
+      setMessages((currentMessages) =>
+        [...currentMessages, message].slice(-50),
+      );
 
       if (message.sender === "sign") {
         setRecognizedText(message.text);
@@ -243,10 +245,6 @@ function App() {
     <main className="min-h-screen bg-slate-100 px-4 py-4 text-slate-950 sm:py-6">
       <section className="mx-auto flex min-h-[calc(100vh-2rem)] w-full max-w-md flex-col rounded-[2rem] bg-white p-2 shadow-xl shadow-slate-300/50 ring-1 ring-slate-100 sm:min-h-[calc(100vh-3rem)]">
         <div className="flex flex-1 flex-col rounded-[1.5rem] bg-slate-50 p-5">
-          {mode === MODES.CONVERSATION && (
-            <Header onBack={() => setMode(MODES.MENU)} />
-          )}
-
           {mode === MODES.MENU && (
             <ModeSelector
               onSignToSpeech={() => setMode(MODES.SIGN_TO_SPEECH)}
@@ -287,10 +285,12 @@ function App() {
               roomId={roomId}
               setRoomId={setRoomId}
               onJoinRoom={joinRoom}
+              onBack={() => setMode(MODES.MENU)}
               socketStatus={socketStatus}
               recognizedText={recognizedText}
               setRecognizedText={setRecognizedText}
               messages={messages}
+              setMessages={setMessages}
               speechStatus={speechStatus}
               isListening={isListening}
               onSpeak={speakText}
@@ -303,23 +303,6 @@ function App() {
         </div>
       </section>
     </main>
-  );
-}
-
-function Header({ onBack }) {
-  return (
-    <header className="mb-3 flex items-center justify-between sm:mb-5">
-      <button
-        type="button"
-        onClick={onBack}
-        className="rounded-full bg-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 transition active:scale-95"
-      >
-        ← Kembali
-      </button>
-      <span className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-bold text-emerald-700">
-        Mobile Web
-      </span>
-    </header>
   );
 }
 
@@ -534,6 +517,24 @@ function SpeakerIcon({ className }) {
   );
 }
 
+function SendIcon({ className }) {
+  return (
+    <svg
+      className={className}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <line x1="22" y1="2" x2="11" y2="13" />
+      <polygon points="22 2 15 22 11 13 2 9 22 2" />
+    </svg>
+  );
+}
+
 function SignToSpeechScreen({
   recognizedText,
   onSpeak,
@@ -723,57 +724,87 @@ function ConversationScreen({
   roomId,
   setRoomId,
   onJoinRoom,
+  onBack,
   socketStatus,
   recognizedText,
   setRecognizedText,
   messages,
+  setMessages,
   speechStatus,
   isListening,
   onSpeak,
   onSendSign,
   onStartListening,
 }) {
+  const chatRef = useRef(null);
+
+  // Ketika bubble sudah memenuhi tinggi layar chat, hapus bubble paling atas
+  // (paling lama) supaya bubble terbaru selalu tampil.
+  useEffect(() => {
+    const el = chatRef.current;
+
+    if (!el) {
+      return;
+    }
+
+    if (el.scrollHeight > el.clientHeight && messages.length > 1) {
+      setMessages((current) => current.slice(1));
+    } else {
+      el.scrollTop = el.scrollHeight;
+    }
+  }, [messages, setMessages]);
+
   return (
-    <div className="flex flex-1 flex-col gap-3">
-      <div>
-        <p className="text-xs font-semibold uppercase tracking-[0.2em] text-violet-600">
-          Mode Dua Arah
-        </p>
-        <h1 className="mt-1 text-xl font-black text-slate-950">
-          💬 Mode Percakapan
-        </h1>
+    <div className="-mt-5 flex flex-1 flex-col">
+      {/* Header hijau full-bleed */}
+      <div className="-mx-5 rounded-t-[1.5rem] bg-gradient-to-r from-teal-600 to-emerald-500 px-5 py-4">
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={onBack}
+            className="flex h-9 w-9 items-center justify-center rounded-full text-white transition hover:bg-white/15 active:scale-95"
+            aria-label="Kembali"
+          >
+            <BackArrowIcon className="h-5 w-5" />
+          </button>
+          <h1 className="text-lg font-bold text-white">Mode Percakapan</h1>
+        </div>
       </div>
 
-      <div className="rounded-[1.5rem] bg-white p-3 shadow-sm">
-        <label className="grid gap-2">
-          <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-500">
-            Room Percakapan
+      {/* Bar room server (nama room tetap dimunculkan) */}
+      <div className="-mx-5 border-b border-slate-100 bg-white px-5 py-2">
+        <div className="flex items-center gap-2">
+          <span className="text-[10px] font-bold uppercase tracking-wide text-slate-400">
+            Room
           </span>
-          <div className="flex gap-2">
-            <input
-              value={roomId}
-              onChange={(event) => setRoomId(event.target.value)}
-              className="min-w-0 flex-1 rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-bold outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
-              placeholder="demo-ta"
-            />
-            <button
-              type="button"
-              onClick={onJoinRoom}
-              className="rounded-2xl bg-slate-900 px-3 py-2 text-sm font-black text-white active:scale-95"
-            >
-              Gabung
-            </button>
-          </div>
-        </label>
-        <p className="mt-2 line-clamp-1 text-[11px] font-semibold text-slate-500">
-          Room aktif: <span className="text-violet-600">{activeRoomId}</span> ·{" "}
-          {socketStatus}
+          <input
+            value={roomId}
+            onChange={(event) => setRoomId(event.target.value)}
+            className="min-w-0 flex-1 rounded-lg border border-slate-200 bg-slate-50 px-2 py-1 text-xs font-semibold outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100"
+            placeholder="demo-ta"
+          />
+          <button
+            type="button"
+            onClick={onJoinRoom}
+            className="rounded-lg bg-slate-800 px-3 py-1 text-xs font-bold text-white active:scale-95"
+          >
+            Gabung
+          </button>
+        </div>
+        <p className="mt-1 truncate text-[10px] font-medium text-slate-400">
+          Aktif:{" "}
+          <span className="font-semibold text-emerald-600">{activeRoomId}</span>{" "}
+          · {socketStatus}
         </p>
       </div>
 
-      <div className="flex flex-1 flex-col justify-center gap-3 rounded-[1.75rem] bg-slate-900 p-3">
+      {/* Area chat */}
+      <div
+        ref={chatRef}
+        className="-mx-5 flex min-h-0 flex-1 flex-col gap-4 overflow-hidden px-5 py-4"
+      >
         {messages.length === 0 && (
-          <div className="flex flex-1 items-center justify-center text-center text-sm font-semibold leading-6 text-slate-400">
+          <div className="flex flex-1 items-center justify-center text-center text-sm font-medium leading-6 text-slate-400">
             Belum ada pesan realtime.
           </div>
         )}
@@ -782,104 +813,91 @@ function ConversationScreen({
           <ConversationBubble
             key={`${message.timestamp}-${index}`}
             align={message.sender === "voice" ? "right" : "left"}
-            icon={message.sender === "voice" ? "🎤" : "🤟"}
             label={
               message.sender === "voice"
-                ? "Orang Normal"
-                : "Penyandang Disabilitas"
-            }
-            caption={
-              message.sender === "voice"
-                ? "Dari speech-to-text"
-                : "Dari robot/model"
+                ? "Anda (Suara)"
+                : "Penyandang Disabilitas (Isyarat)"
             }
             text={message.text}
-            actionLabel={message.sender === "sign" ? "🔊 Bacakan" : undefined}
+            showAction={message.sender === "sign"}
             onAction={() => onSpeak(message.text)}
           />
         ))}
       </div>
 
-      <div className="grid gap-2 rounded-[1.5rem] bg-white p-3 shadow-sm">
-        <label className="grid gap-2">
-          <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-500">
-            Simulasi hasil robot/model
-          </span>
-          <textarea
-            value={recognizedText}
-            onChange={(event) => setRecognizedText(event.target.value)}
-            rows={1}
-            className="w-full resize-none rounded-2xl border border-slate-200 bg-slate-50 p-3 text-sm font-bold leading-5 outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
-            placeholder="Hasil bahasa isyarat dari server akan muncul di sini"
-          />
-        </label>
+      {/* Panel input bawah */}
+      <div className="-mx-5 -mb-5 flex flex-col gap-3 rounded-b-[1.5rem] border-t border-slate-100 bg-white px-5 pb-5 pt-4">
+        <button
+          type="button"
+          onClick={onStartListening}
+          disabled={isListening}
+          className="mx-auto inline-flex items-center gap-2 rounded-full bg-gradient-to-r from-teal-600 to-emerald-500 px-6 py-3 text-sm font-bold text-white shadow-lg shadow-emerald-200 transition active:scale-95 disabled:opacity-60"
+        >
+          <MicIcon className="h-5 w-5" />
+          {isListening ? "Mendengarkan..." : "Balas dengan Suara"}
+        </button>
 
-        <div className="grid grid-cols-2 gap-2">
-          <button
-            type="button"
-            onClick={onSendSign}
-            className="rounded-2xl bg-emerald-500 px-3 py-3 text-sm font-black text-white shadow-lg shadow-emerald-100 transition hover:bg-emerald-600 active:scale-[0.98]"
-          >
-            🤟 Kirim Hasil
-          </button>
-          <button
-            type="button"
-            onClick={onStartListening}
-            disabled={isListening}
-            className="rounded-2xl bg-violet-600 px-3 py-3 text-sm font-black text-white shadow-lg shadow-violet-100 transition hover:bg-violet-700 active:scale-[0.98] disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-500"
-          >
-            {isListening ? "Mendengar..." : "🎤 Balas"}
-          </button>
+        <div className="rounded-2xl bg-slate-50 p-3">
+          <p className="mb-2 flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-[0.15em] text-slate-500">
+            🔧 Simulasi Input Isyarat (Robot/Server)
+          </p>
+          <div className="flex items-center gap-2">
+            <input
+              value={recognizedText}
+              onChange={(event) => setRecognizedText(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") {
+                  onSendSign();
+                }
+              }}
+              className="min-w-0 flex-1 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100"
+              placeholder="Ketik simulasi isyarat..."
+            />
+            <button
+              type="button"
+              onClick={onSendSign}
+              aria-label="Kirim simulasi isyarat"
+              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-slate-500 text-white transition hover:bg-slate-600 active:scale-95"
+            >
+              <SendIcon className="h-5 w-5" />
+            </button>
+          </div>
         </div>
-        <p className="line-clamp-2 text-center text-xs font-semibold leading-5 text-slate-500">
-          {speechStatus}
-        </p>
+
+        {speechStatus && (
+          <p className="line-clamp-2 text-center text-[11px] font-medium leading-4 text-slate-400">
+            {speechStatus}
+          </p>
+        )}
       </div>
     </div>
   );
 }
 
-function ConversationBubble({
-  align,
-  icon,
-  label,
-  caption,
-  text,
-  actionLabel,
-  onAction,
-  disabled,
-}) {
+function ConversationBubble({ align, label, text, showAction, onAction }) {
   const isRight = align === "right";
 
   return (
-    <div className={`flex ${isRight ? "justify-end" : "justify-start"}`}>
+    <div className={`flex flex-col ${isRight ? "items-end" : "items-start"}`}>
+      <span className="mb-1 px-1 text-[11px] font-semibold text-slate-400">
+        {label}
+      </span>
       <div
-        className={`max-w-[88%] rounded-[1.25rem] p-3 ${isRight ? "bg-sky-500 text-white" : "bg-white text-slate-950"}`}
+        className={`max-w-[80%] rounded-2xl px-4 py-3 shadow-sm ${
+          isRight
+            ? "bg-gradient-to-br from-teal-600 to-emerald-500 text-white"
+            : "bg-white text-slate-900"
+        }`}
       >
-        <div className="mb-2 flex items-center gap-2">
-          <span
-            className={`flex h-8 w-8 items-center justify-center rounded-full text-lg ${isRight ? "bg-white/20" : "bg-emerald-100"}`}
-          >
-            {icon}
-          </span>
-          <span>
-            <span className="block text-xs font-black">{label}</span>
-            <span
-              className={`block text-xs font-semibold ${isRight ? "text-sky-100" : "text-slate-500"}`}
-            >
-              {caption}
-            </span>
-          </span>
-        </div>
-        <p className="line-clamp-3 text-base font-black leading-6">{text}</p>
-        {actionLabel && (
+        <p className="text-sm font-semibold leading-6">{text}</p>
+        {showAction && (
           <button
             type="button"
             onClick={onAction}
-            disabled={disabled}
-            className="mt-2 rounded-full bg-emerald-500 px-3 py-2 text-xs font-black text-white transition active:scale-95 disabled:cursor-not-allowed disabled:bg-slate-300"
+            className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700 transition active:scale-95"
           >
-            {actionLabel}
+            <SpeakerIcon className="h-3.5 w-3.5" />
+            Bacakan
           </button>
         )}
       </div>
