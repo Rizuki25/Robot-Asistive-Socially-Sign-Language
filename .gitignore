@@ -26,6 +26,7 @@ Model/dataset/*/raw/*
 !Model/dataset/*/raw/.gitkeep
 Model/dataset/*/landmarks/
 Model/dataset/*/processed/
+Model/dataset/*/processed_*/
 
 # Output models & logs - per task (letters, words)
 Model/outputs/*/models/*
