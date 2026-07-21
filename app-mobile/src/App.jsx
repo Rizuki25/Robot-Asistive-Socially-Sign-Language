@@ -306,23 +306,6 @@ function App() {
   );
 }
 
-function ActivityIcon({ className }) {
-  return (
-    <svg
-      className={className}
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2.2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
-      <path d="M22 12h-4l-3 9L9 3l-3 9H2" />
-    </svg>
-  );
-}
-
 function HandIcon({ className }) {
   return (
     <svg
@@ -385,7 +368,7 @@ function ModeSelector({ onSignToSpeech, onSpeechToText, onConversation }) {
     <div className="flex flex-1 flex-col justify-center gap-8">
       <div className="text-center">
         <div className="mx-auto mb-5 flex h-24 w-24 items-center justify-center rounded-full bg-emerald-100">
-          <ActivityIcon className="h-10 w-10 text-emerald-700" />
+          <HandIcon className="h-12 w-12 text-emerald-700" />
         </div>
         <h1 className="text-3xl font-black leading-tight tracking-tight text-slate-900">
           Sign Language Assistant

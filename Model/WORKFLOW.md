@@ -8,7 +8,7 @@ Project ini terdiri dari **dua model independen** yang berbagi satu codebase (`s
 
 | Task | Kelas | Tangan | Config | Status |
 |------|-------|--------|--------|--------|
-| **Huruf** (fingerspelling) | A-Z (26 kelas) | 1 tangan | `configs/letters.yaml` | ✅ Dataset & model sudah ada |
+| **Huruf** (fingerspelling) | A-Z (26 kelas) | Maks. 2 tangan (sesuai config) | `configs/letters.yaml` | ✅ Dataset & model sudah ada |
 | **Kata** (isyarat kata) | TBD | Bisa 2 tangan | `configs/words.yaml` | ⏳ Dataset belum tersedia |
 
 Kedua task punya `dataset/`, `outputs/`, dan `config.yaml` sendiri-sendiri (lihat [Struktur Folder](#struktur-folder-project)) — label encoder-nya terpisah total, jadi kelas huruf dan kata **tidak pernah tercampur** dalam satu output layer. Script di `src/` sama persis untuk keduanya; yang membedakan cuma argumen CLI/`--config` yang dipakai.
@@ -50,13 +50,13 @@ Mengekstrak titik landmark tangan dari setiap frame video menggunakan **MediaPip
 ### Output
 - File `.npy` berisi array landmark per video, disimpan di `dataset/{task}/landmarks/{nama_kelas}/video1.npy`
 - Shape per file: `(num_frames, 21 * max_num_hands, 3)`
-  - `max_num_hands=1` (huruf) → `(num_frames, 21, 3)`
-  - `max_num_hands=2` (kata) → `(num_frames, 42, 3)`
+  - `max_num_hands=1` → `(num_frames, 21, 3)`
+  - `max_num_hands=2` (config huruf saat ini dan kata) → `(num_frames, 42, 3)`
 
 ### Cara Menjalankan
 ```bash
-# Huruf (1 tangan, default)
-python src/extract_landmarks.py --input_dir dataset/letters/raw --output_dir dataset/letters/landmarks
+# Huruf (ikuti config letters.yaml: maksimal 2 tangan)
+python src/extract_landmarks.py --input_dir dataset/letters/raw --output_dir dataset/letters/landmarks --max_num_hands 2
 
 # Kata (2 tangan)
 python src/extract_landmarks.py --input_dir dataset/words/raw --output_dir dataset/words/landmarks --max_num_hands 2
@@ -77,7 +77,7 @@ Mempersiapkan data landmark agar siap dilatih oleh model BiLSTM.
 
 ### Proses
 1. **Split index dulu** (stratified per kelas, train/val/test) — dilakukan **sebelum** normalisasi & augmentasi supaya val/test tidak pernah tersentuh data sintetis
-2. **Normalisasi** (`--normalization wrist_relative`, default): tiap tangan di-center ke wrist-nya sendiri (translation-invariant) lalu diskalakan dengan jarak wrist→pangkal jari tengah (scale-invariant). Diterapkan per-blok 21 landmark, jadi otomatis mendukung 1 tangan (huruf) maupun 2 tangan (kata). Opsi lama `minmax`/`zscore` masih tersedia untuk eksperimen.
+2. **Normalisasi** (`--normalization wrist_relative`, default): tiap tangan di-center ke wrist-nya sendiri (translation-invariant) lalu diskalakan dengan jarak wrist→pangkal jari tengah (scale-invariant). Diterapkan per-blok 21 landmark, jadi otomatis mendukung config 1 tangan maupun 2 tangan. Opsi lama `minmax`/`zscore` masih tersedia untuk eksperimen.
 3. **Augmentasi (hanya pada train split)** — `--augment_factor N` (default 3) menghasilkan N salinan teraugmentasi per sample training lewat kombinasi rotasi kecil, scale jitter, gaussian noise, dan time-warp (variasi kecepatan). Val/test **tidak** diaugmentasi.
 4. **Padding/Truncating**: sequence disamakan panjangnya ke `--max_seq_length` (cek dulu distribusi panjang video asli sebelum menentukan angka ini — jangan asal pakai default)
 5. **Flatten Landmark**: reshape dari `(seq_len, 21*num_hands, 3)` menjadi `(seq_len, 63*num_hands)` sebagai input BiLSTM
@@ -111,7 +111,7 @@ Membangun dan melatih model BiLSTM untuk klasifikasi bahasa isyarat.
 
 ### Arsitektur Model (`src/model.py`)
 ```
-Input (batch, seq_len, input_size)   # input_size = 63 (huruf, 1 tangan) atau 126 (kata, 2 tangan)
+Input (batch, seq_len, input_size)   # input_size = 63 (1 tangan) atau 126 (2 tangan; config huruf saat ini)
         │
   ┌─────▼─────┐
   │  BiLSTM    │  ← Bidirectional LSTM layer(s)
@@ -140,7 +140,7 @@ Input (batch, seq_len, input_size)   # input_size = 63 (huruf, 1 tangan) atau 12
 5. Simpan model terbaik berdasarkan validation loss
 
 ### Hyperparameter (dikonfigurasi di `configs/letters.yaml` / `configs/words.yaml`)
-- `input_size`: 63 untuk huruf (1 tangan), 126 untuk kata (2 tangan) — harus cocok dengan `max_num_hands` yang dipakai saat ekstraksi
+- `input_size`: 63 untuk 1 tangan atau 126 untuk 2 tangan. Config huruf saat ini memakai 126 — harus cocok dengan `max_num_hands` yang dipakai saat ekstraksi
 - `hidden_size`: Ukuran hidden state LSTM (default: 128)
 - `num_layers`: Jumlah layer LSTM (default: 2)
 - `dropout`: Dropout rate (default: 0.5)
@@ -201,6 +201,54 @@ Accuracy 87.82% / Precision 0.9125 / Recall 0.8782 / F1-Score 0.8808 (test set, 
 
 ---
 
+## Tahap 5: Test Prediksi Video Huruf (`src/predict_video.py`)
+
+### Tujuan
+Menguji checkpoint huruf pada satu video mentah dari dataset, lalu menampilkan dan/atau menyimpan video beranotasi yang berisi kelas hasil prediksi dan confidence.
+
+### Alur Inference
+1. Baca konfigurasi huruf, label encoder, dan checkpoint BiLSTM
+2. Ekstrak landmark dari seluruh frame video dengan parameter MediaPipe pada config
+3. Terapkan normalisasi serta padding/truncating yang sama persis dengan preprocessing training
+4. Prediksi satu kelas dari seluruh sequence video dan hitung confidence dengan softmax
+5. Putar ulang video dengan overlay landmark tangan dan skeleton tubuh tanpa koneksi wajah dari MediaPipe Pose; tekan **Q** atau **Esc** untuk keluar. Skeleton tubuh hanya untuk visualisasi, bukan input model. Teks kelas baru muncul setelah gerakan tangan terdeteksi lalu berhenti sementara.
+
+Prediksi dilakukan untuk **satu sequence video utuh**, bukan klasifikasi independen pada setiap frame. File landmark baru tidak dibuat.
+
+### Input
+- Video mentah, misalnya `dataset/letters/raw/B/B_0001.avi`
+- Model `outputs/letters/models/best_model.pth`
+- Config `configs/letters.yaml`
+- Label encoder `dataset/letters/processed/label_encoder.json`
+
+### Cara Menjalankan
+```bash
+# Tampilkan video hasil prediksi
+python src/predict_video.py --video_path dataset/letters/raw/B/B_0001.avi
+
+# Tampilkan sekaligus simpan video beranotasi
+python src/predict_video.py --video_path dataset/letters/raw/B/B_0001.avi --output_path outputs/letters/predictions/B_0001_prediction.mp4
+
+# Simpan tanpa membuka window (headless/server)
+python src/predict_video.py --video_path dataset/letters/raw/B/B_0001.avi --output_path outputs/letters/predictions/B_0001_prediction.mp4 --no_display
+
+# Pilih checkpoint/config secara eksplisit bila diperlukan
+python src/predict_video.py --video_path <path-video> --model_path outputs/letters/models/best_model.pth --config configs/letters.yaml
+```
+
+Jika `--output_path` tidak diberikan, video ditampilkan lalu terminal menanyakan `Apakah ingin disave hasil video ini? (y/n)`. Saat menjawab `y`, Enter pada pertanyaan lokasi memakai `outputs/letters/predictions/`, atau masukkan direktori/file lain. `--output_path` menyimpan langsung tanpa pertanyaan. Jika `--no_display` dipakai tanpa `--output_path`, script hanya mencetak hasil prediksi di terminal.
+
+Deteksi selesai gerakan dapat disesuaikan dengan `--motion_threshold` (default `0.003`) dan `--pause_frames` (default `8`). Sistem harus melihat gerakan terlebih dahulu, lalu beberapa frame diam, sebelum teks prediksi muncul. Jika jeda tidak ditemukan, hasil ditampilkan pada frame terakhir.
+
+### Output
+- Terminal: kelas huruf dan confidence
+- Window OpenCV: video dengan overlay prediksi (kecuali `--no_display`)
+- Video hasil opsional: path dari `--output_path`, disarankan di `outputs/letters/predictions/`
+
+> **Konsistensi model:** `landmark.max_num_hands`, `model.input_size`, `preprocessing.max_seq_length`, dan `preprocessing.normalization` pada config harus sama dengan nilai ketika checkpoint dilatih. Config huruf saat ini memakai maksimal **2 tangan** dan `input_size: 126`.
+
+---
+
 ## Struktur Folder Project
 
 ```
@@ -217,7 +265,7 @@ Model/
 ├── dataset/
 │   ├── letters/
 │   │   ├── raw/                 # Video mentah huruf, per kelas: raw/{A,B,...,Z}/
-│   │   ├── landmarks/           # Hasil ekstraksi landmark (.npy), shape (frames, 21, 3)
+│   │   ├── landmarks/           # Hasil ekstraksi (.npy), shape (frames, 42, 3) sesuai config
 │   │   └── processed/           # Data siap latih (train/val/test .pt) + label_encoder.json
 │   │
 │   └── words/
@@ -233,6 +281,7 @@ Model/
 │   ├── dataset_loader.py        # PyTorch Dataset & DataLoader (shared)
 │   ├── train.py                 # Tahap 3: Training loop (shared)
 │   ├── evaluate.py              # Tahap 4: Evaluasi model (shared)
+│   ├── predict_video.py         # Tahap 5: Prediksi dan visualisasi satu video huruf
 │   └── utils.py                 # Fungsi utilitas umum
 │
 ├── notebooks/
@@ -243,7 +292,8 @@ Model/
     │   ├── models/               # best_model.pth huruf
     │   ├── logs/                 # training_log.csv huruf
     │   ├── figures/              # training_curves.png, confusion_matrix.png huruf
-    │   └── results/              # classification_report.txt, evaluation_metrics.json huruf
+    │   ├── results/              # classification_report.txt, evaluation_metrics.json huruf
+    │   └── predictions/          # Video hasil prediksi (dibuat saat diperlukan)
     │
     └── words/
         ├── models/
@@ -263,7 +313,7 @@ Model/
 pip install -r requirements.txt
 
 # --- Task Huruf ---
-python src/extract_landmarks.py --input_dir dataset/letters/raw --output_dir dataset/letters/landmarks
+python src/extract_landmarks.py --input_dir dataset/letters/raw --output_dir dataset/letters/landmarks --max_num_hands 2
 python src/preprocess.py --input_dir dataset/letters/landmarks --output_dir dataset/letters/processed --max_seq_length 90 --normalization wrist_relative --augment_factor 3
 python src/train.py --config configs/letters.yaml
 python src/evaluate.py --model_path outputs/letters/models/best_model.pth --config configs/letters.yaml
@@ -297,7 +347,7 @@ python src/evaluate.py --model_path outputs/words/models/best_model.pth --config
 
 1. **Dua task independen** — huruf (`configs/letters.yaml`, `dataset/letters/`, `outputs/letters/`) dan kata (`configs/words.yaml`, `dataset/words/`, `outputs/words/`). Jangan pernah gabungkan keduanya jadi satu model/label encoder.
 2. **Dataset kata belum ada** — folder `dataset/words/raw/` masih kosong (cuma `.gitkeep`). Jangan asumsikan ada data kata sebelum dicek langsung.
-3. **`max_num_hands`** — huruf pakai 1 tangan (`input_size=63`), kata bisa pakai 2 tangan (`input_size=126`). Nilai ini harus konsisten antara `extract_landmarks.py --max_num_hands` dan `model.input_size` di config, kalau tidak training/inference akan mismatch shape.
+3. **`max_num_hands`** — jumlah tangan harus konsisten antara `extract_landmarks.py --max_num_hands`, preprocessing, checkpoint, dan `model.input_size` di config. Config huruf saat ini memakai 2 tangan (`input_size=126`); config lain dapat memakai 1 tangan (`input_size=63`).
 4. **Framework: PyTorch** — Semua pemodelan dan training menggunakan PyTorch, **BUKAN TensorFlow/Keras**.
 5. **MediaPipe Hands** — Gunakan `mediapipe.solutions.hands` untuk ekstraksi landmark. Saat 2 tangan, urutan slot tetap [Left, Right] berdasarkan `multi_handedness`, tangan tak terdeteksi diisi nol per frame (bukan skip video).
 6. **Normalisasi default: wrist-relative** — bukan minmax/zscore. Diterapkan per-blok 21 landmark (per tangan), bukan global.
