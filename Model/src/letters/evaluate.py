@@ -29,9 +29,9 @@ from sklearn.metrics import (
     confusion_matrix
 )
 
-from model import BiLSTMModel
-from dataset_loader import create_dataloaders
-from utils import get_device
+from src.common.utils import get_device
+from src.letters.dataset_loader import create_dataloaders
+from src.letters.model import BiLSTMModel
 
 
 def evaluate_model(model, dataloader, device) -> tuple:

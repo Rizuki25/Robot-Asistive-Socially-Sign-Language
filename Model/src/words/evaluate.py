@@ -19,9 +19,9 @@ from sklearn.metrics import (
     recall_score,
 )
 
-from dataset_loader_words import create_word_dataloaders
-from model_words import WordMotionBiLSTM
-from utils import get_device
+from src.common.utils import get_device
+from src.words.dataset_loader import create_word_dataloaders
+from src.words.model import WordMotionBiLSTM
 
 
 def main():

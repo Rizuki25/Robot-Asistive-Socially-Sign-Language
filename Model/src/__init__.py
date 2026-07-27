@@ -1,2 +1,1 @@
-# Sign Language Recognition - BiLSTM
-# src package
+"""Paket utama: pipeline letters, words, dan komponen common."""

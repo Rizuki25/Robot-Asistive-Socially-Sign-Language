@@ -5,7 +5,7 @@ Menjalankan model BiLSTM terlatih pada satu video dataset dan menampilkan
 atau menyimpan video dengan overlay kelas huruf dan confidence.
 
 Jalankan dari folder Model/:
-    python src/predict_video.py --video_path dataset/letters/raw/B/B_0001.avi
+    python -m src.letters.predict_video --video_path dataset/letters/raw/B/B_0001.avi
 """
 
 import argparse
@@ -18,14 +18,16 @@ import numpy as np
 import torch
 import yaml
 
-from extract_landmarks import extract_landmarks_from_video
-from model import BiLSTMModel
-from preprocess import normalize_data, pad_or_truncate
-from utils import get_device, load_checkpoint
+from src.common.extract_landmarks import extract_landmarks_from_video
+from src.common.utils import get_device, load_checkpoint
+from src.letters.model import BiLSTMModel
+from src.letters.preprocess import normalize_data, pad_or_truncate
 
 
 VIDEO_EXTENSIONS = (".mp4", ".avi", ".mov", ".mkv", ".wmv")
-MODEL_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+MODEL_ROOT = os.path.dirname(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+)
 
 
 def resolve_input_path(path: str) -> str:

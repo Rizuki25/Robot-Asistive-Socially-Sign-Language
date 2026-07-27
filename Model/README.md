@@ -42,18 +42,28 @@ dataset/letters/raw/
 
 Konfigurasi huruf saat ini menggunakan maksimal dua tangan (`input_size: 126`). Nilai `--max_num_hands`, jumlah fitur, dan checkpoint harus selalu sama dengan konfigurasi yang digunakan saat training.
 
+Untuk menormalisasi dataset lama secara selektif ke 90 frame/30 FPS tanpa
+menimpa sumber:
+
+```bash
+python -m src.letters.normalize_letter_videos
+```
+
+Video yang sudah konsisten disalin tanpa re-encode; hanya video yang berbeda
+yang diproses ulang. Hasil lengkap berada di `dataset/letters/raw_90/`.
+
 ```bash
 # Ekstraksi landmark (dua slot tangan sesuai configs/letters.yaml)
-python src/extract_landmarks.py --input_dir dataset/letters/raw --output_dir dataset/letters/landmarks --max_num_hands 2
+python -m src.common.extract_landmarks --input_dir dataset/letters/raw --output_dir dataset/letters/landmarks --max_num_hands 2
 
 # Preprocessing
-python src/preprocess.py --input_dir dataset/letters/landmarks --output_dir dataset/letters/processed --max_seq_length 90 --normalization wrist_relative --augment_factor 3
+python -m src.letters.preprocess --input_dir dataset/letters/landmarks --output_dir dataset/letters/processed --max_seq_length 90 --normalization wrist_relative --augment_factor 3
 
 # Training
-python src/train.py --config configs/letters.yaml
+python -m src.letters.train --config configs/letters.yaml
 
 # Evaluasi
-python src/evaluate.py --model_path outputs/letters/models/best_model.pth --config configs/letters.yaml
+python -m src.letters.evaluate --model_path outputs/letters/models/best_model.pth --config configs/letters.yaml
 ```
 
 ### 4. Test Prediksi Video Huruf
@@ -61,16 +71,16 @@ python src/evaluate.py --model_path outputs/letters/models/best_model.pth --conf
 Prediksi satu video dataset dan tampilkan video beranotasi. Video menampilkan titik serta garis landmark tangan dan skeleton tubuh tanpa titik wajah dari MediaPipe Pose. Landmark tubuh hanya untuk visualisasi; prediksi model tetap menggunakan landmark tangan. Teks hasil baru ditampilkan setelah sistem mendeteksi gerakan tangan lalu jeda. Setelah pemutaran, terminal menanyakan apakah video ingin disimpan; Enter pada lokasi tujuan memakai `outputs/letters/predictions/`. Ukuran window default memiliki lebar maksimum 960 piksel. Tekan **Q** atau **Esc** untuk menutup window.
 
 ```bash
-python src/predict_video.py --video_path dataset/letters/raw/B/B_0001.avi
+python -m src.letters.predict_video --video_path dataset/letters/raw/B/B_0001.avi
 
 # Gunakan ukuran window yang lebih kecil
-python src/predict_video.py --video_path dataset/letters/raw/B/B_0001.avi --display_width 640
+python -m src.letters.predict_video --video_path dataset/letters/raw/B/B_0001.avi --display_width 640
 ```
 
 Simpan hasil sebagai video MP4:
 
 ```bash
-python src/predict_video.py \
+python -m src.letters.predict_video \
   --video_path dataset/letters/raw/B/B_0001.avi \
   --output_path outputs/letters/predictions/B_0001_prediction.mp4
 ```
@@ -78,13 +88,33 @@ python src/predict_video.py \
 Untuk server/headless tanpa window OpenCV:
 
 ```bash
-python src/predict_video.py \
+python -m src.letters.predict_video \
   --video_path dataset/letters/raw/B/B_0001.avi \
   --output_path outputs/letters/predictions/B_0001_prediction.mp4 \
   --no_display
 ```
 
 Script memprediksi dari **seluruh sequence video**, lalu menampilkan kelas huruf dan confidence pada setiap frame video hasil. Script ini tidak membuat file landmark baru.
+
+### 5. Test Realtime dengan Webcam
+
+Jalankan inference huruf langsung melalui webcam OpenCV:
+
+```bash
+python -m src.letters.predict_webcam
+```
+
+Alurnya berjalan otomatis dan berulang: sistem menunggu gerakan tangan, merekam sequence, memprediksi setelah tangan diam selama beberapa frame, menampilkan hasil sebentar, lalu reset untuk membaca huruf berikutnya. Tekan **Q** atau **Esc** untuk keluar.
+
+```bash
+# Pilih kamera dan perkecil window
+python -m src.letters.predict_webcam --camera_index 0 --display_width 640
+
+# Sesuaikan sensitivitas selesai gerakan dan durasi hasil
+python -m src.letters.predict_webcam --motion_threshold 0.003 --pause_frames 8 --result_frames 45
+```
+
+Skeleton tubuh tanpa titik wajah hanya untuk visualisasi. Model tetap memakai landmark tangan sebanyak 126 fitur sesuai config. Mode webcam tidak merekam atau menyimpan video. Opsi `--mirror` tersedia untuk tampilan seperti cermin, tetapi default-nya nonaktif agar orientasi input konsisten dengan dataset training.
 
 ## 📁 Struktur Project
 
@@ -94,7 +124,9 @@ Script memprediksi dari **seluruh sequence video**, lalu menampilkan kelas huruf
 - `dataset/letters/processed/` — tensor train/val/test dan label encoder
 - `outputs/letters/models/` — checkpoint model
 - `outputs/letters/predictions/` — lokasi yang disarankan untuk video hasil prediksi
-- `src/predict_video.py` — inference dan visualisasi satu video
+- `src/letters/` — recorder, preprocessing, model, training, evaluasi, dan inference huruf
+- `src/words/` — preprocessing, model, training, dan evaluasi kata motion-aware
+- `src/common/` — ekstraksi landmark dan utilitas bersama
 
 Lihat [WORKFLOW.md](WORKFLOW.md) untuk dokumentasi lengkap setiap tahap dan opsi prediksi video.
 

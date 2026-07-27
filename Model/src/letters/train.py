@@ -25,9 +25,9 @@ import pandas as pd
 import matplotlib.pyplot as plt
 from tqdm import tqdm
 
-from model import BiLSTMModel
-from dataset_loader import create_dataloaders
-from utils import set_seed, get_device, save_checkpoint
+from src.common.utils import get_device, save_checkpoint, set_seed
+from src.letters.dataset_loader import create_dataloaders
+from src.letters.model import BiLSTMModel
 
 
 def train_one_epoch(

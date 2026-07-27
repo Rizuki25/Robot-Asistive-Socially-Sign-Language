@@ -28,7 +28,7 @@ Alur ini dijalankan **terpisah** untuk task huruf dan task kata (dataset/output 
 
 ---
 
-## Tahap 1: Ekstraksi Landmark (`src/extract_landmarks.py`)
+## Tahap 1: Ekstraksi Landmark (`src/common/extract_landmarks.py`)
 
 ### Tujuan
 Mengekstrak titik landmark tangan dari setiap frame video menggunakan **MediaPipe Hands**.
@@ -56,18 +56,18 @@ Mengekstrak titik landmark tangan dari setiap frame video menggunakan **MediaPip
 ### Cara Menjalankan
 ```bash
 # Huruf (ikuti config letters.yaml: maksimal 2 tangan)
-python src/extract_landmarks.py --input_dir dataset/letters/raw --output_dir dataset/letters/landmarks --max_num_hands 2
+python -m src.common.extract_landmarks --input_dir dataset/letters/raw --output_dir dataset/letters/landmarks --max_num_hands 2
 
 # Kata (2 tangan)
-python src/extract_landmarks.py --input_dir dataset/words/raw --output_dir dataset/words/landmarks --max_num_hands 2
+python -m src.common.extract_landmarks --input_dir dataset/words/raw --output_dir dataset/words/landmarks --max_num_hands 2
 
 # Paksa ekstrak ulang semua video (bukan cuma yang baru)
-python src/extract_landmarks.py --input_dir dataset/letters/raw --output_dir dataset/letters/landmarks --overwrite
+python -m src.common.extract_landmarks --input_dir dataset/letters/raw --output_dir dataset/letters/landmarks --overwrite
 ```
 
 ---
 
-## Tahap 2: Preprocessing Data (`src/preprocess.py`)
+## Tahap 2: Preprocessing Data
 
 ### Tujuan
 Mempersiapkan data landmark agar siap dilatih oleh model BiLSTM.
@@ -93,15 +93,15 @@ Mempersiapkan data landmark agar siap dilatih oleh model BiLSTM.
 ### Cara Menjalankan
 ```bash
 # Huruf
-python src/preprocess.py --input_dir dataset/letters/landmarks --output_dir dataset/letters/processed --max_seq_length 90 --normalization wrist_relative --augment_factor 3
+python -m src.letters.preprocess --input_dir dataset/letters/landmarks --output_dir dataset/letters/processed --max_seq_length 90 --normalization wrist_relative --augment_factor 3
 
 # Kata (setelah dataset kata tersedia — cek dulu statistik panjang video sebelum set max_seq_length)
-python src/preprocess.py --input_dir dataset/words/landmarks --output_dir dataset/words/processed --max_seq_length <sesuaikan> --normalization wrist_relative --augment_factor 3
+python -m src.words.preprocess --config configs/words_motion.yaml
 ```
 
 ---
 
-## Tahap 3: Pemodelan & Pelatihan BiLSTM (`src/train.py`)
+## Tahap 3: Pemodelan & Pelatihan BiLSTM
 
 ### Tujuan
 Membangun dan melatih model BiLSTM untuk klasifikasi bahasa isyarat.
@@ -109,7 +109,7 @@ Membangun dan melatih model BiLSTM untuk klasifikasi bahasa isyarat.
 ### Input
 - Data `.pt` yang telah diproses dari Tahap 2
 
-### Arsitektur Model (`src/model.py`)
+### Arsitektur Model (`src/letters/model.py` dan `src/words/model.py`)
 ```
 Input (batch, seq_len, input_size)   # input_size = 63 (1 tangan) atau 126 (2 tangan; config huruf saat ini)
         │
@@ -158,15 +158,15 @@ Input (batch, seq_len, input_size)   # input_size = 63 (1 tangan) atau 126 (2 ta
 ### Cara Menjalankan
 ```bash
 # Huruf
-python src/train.py --config configs/letters.yaml
+python -m src.letters.train --config configs/letters.yaml
 
 # Kata
-python src/train.py --config configs/words.yaml
+python -m src.words.train --config configs/words_motion.yaml
 ```
 
 ---
 
-## Tahap 4: Evaluasi Model (`src/evaluate.py`)
+## Tahap 4: Evaluasi Model
 
 ### Tujuan
 Mengevaluasi performa model pada test set.
@@ -190,10 +190,10 @@ Mengevaluasi performa model pada test set.
 ### Cara Menjalankan
 ```bash
 # Huruf
-python src/evaluate.py --model_path outputs/letters/models/best_model.pth --config configs/letters.yaml
+python -m src.letters.evaluate --model_path outputs/letters/models/best_model.pth --config configs/letters.yaml
 
 # Kata
-python src/evaluate.py --model_path outputs/words/models/best_model.pth --config configs/words.yaml
+python -m src.words.evaluate --config configs/words_motion.yaml
 ```
 
 ### Hasil Terkini (Huruf)
@@ -201,7 +201,7 @@ Accuracy 87.82% / Precision 0.9125 / Recall 0.8782 / F1-Score 0.8808 (test set, 
 
 ---
 
-## Tahap 5: Test Prediksi Video Huruf (`src/predict_video.py`)
+## Tahap 5: Test Prediksi Video Huruf (`src/letters/predict_video.py`)
 
 ### Tujuan
 Menguji checkpoint huruf pada satu video mentah dari dataset, lalu menampilkan dan/atau menyimpan video beranotasi yang berisi kelas hasil prediksi dan confidence.
@@ -224,16 +224,16 @@ Prediksi dilakukan untuk **satu sequence video utuh**, bukan klasifikasi indepen
 ### Cara Menjalankan
 ```bash
 # Tampilkan video hasil prediksi
-python src/predict_video.py --video_path dataset/letters/raw/B/B_0001.avi
+python -m src.letters.predict_video --video_path dataset/letters/raw/B/B_0001.avi
 
 # Tampilkan sekaligus simpan video beranotasi
-python src/predict_video.py --video_path dataset/letters/raw/B/B_0001.avi --output_path outputs/letters/predictions/B_0001_prediction.mp4
+python -m src.letters.predict_video --video_path dataset/letters/raw/B/B_0001.avi --output_path outputs/letters/predictions/B_0001_prediction.mp4
 
 # Simpan tanpa membuka window (headless/server)
-python src/predict_video.py --video_path dataset/letters/raw/B/B_0001.avi --output_path outputs/letters/predictions/B_0001_prediction.mp4 --no_display
+python -m src.letters.predict_video --video_path dataset/letters/raw/B/B_0001.avi --output_path outputs/letters/predictions/B_0001_prediction.mp4 --no_display
 
 # Pilih checkpoint/config secara eksplisit bila diperlukan
-python src/predict_video.py --video_path <path-video> --model_path outputs/letters/models/best_model.pth --config configs/letters.yaml
+python -m src.letters.predict_video --video_path <path-video> --model_path outputs/letters/models/best_model.pth --config configs/letters.yaml
 ```
 
 Jika `--output_path` tidak diberikan, video ditampilkan lalu terminal menanyakan `Apakah ingin disave hasil video ini? (y/n)`. Saat menjawab `y`, Enter pada pertanyaan lokasi memakai `outputs/letters/predictions/`, atau masukkan direktori/file lain. `--output_path` menyimpan langsung tanpa pertanyaan. Jika `--no_display` dipakai tanpa `--output_path`, script hanya mencetak hasil prediksi di terminal.
@@ -246,6 +246,25 @@ Deteksi selesai gerakan dapat disesuaikan dengan `--motion_threshold` (default `
 - Video hasil opsional: path dari `--output_path`, disarankan di `outputs/letters/predictions/`
 
 > **Konsistensi model:** `landmark.max_num_hands`, `model.input_size`, `preprocessing.max_seq_length`, dan `preprocessing.normalization` pada config harus sama dengan nilai ketika checkpoint dilatih. Config huruf saat ini memakai maksimal **2 tangan** dan `input_size: 126`.
+
+### Inference Realtime Webcam (`src/letters/predict_webcam.py`)
+
+Webcam OpenCV dapat dipakai untuk membaca beberapa huruf secara berulang tanpa menyiapkan file video:
+
+```bash
+python -m src.letters.predict_webcam
+python -m src.letters.predict_webcam --camera_index 0 --display_width 640
+```
+
+State inference realtime:
+
+1. **WAITING** — menunggu tangan mulai bergerak
+2. **RECORDING** — mengumpulkan sequence landmark tangan
+3. Setelah tangan diam selama `--pause_frames`, sequence dinormalisasi/padding dan diprediksi
+4. **RESULT** — kelas serta confidence ditampilkan selama `--result_frames`
+5. Sistem reset otomatis ke WAITING untuk membaca huruf berikutnya
+
+Opsi sensitivitas utama adalah `--motion_threshold` (default `0.003`), `--pause_frames` (default `8`), dan `--result_frames` (default `45`). Tekan **Q** atau **Esc** untuk keluar. Landmark Pose badan tanpa wajah hanya visualisasi; tensor model tetap berasal dari landmark tangan. Mode webcam tidak merekam video.
 
 ---
 
@@ -275,14 +294,26 @@ Model/
 │
 ├── src/
 │   ├── __init__.py
-│   ├── extract_landmarks.py     # Tahap 1: Ekstraksi landmark MediaPipe (shared, dipakai kedua task)
-│   ├── preprocess.py            # Tahap 2: Normalisasi, augmentasi, split data (shared)
-│   ├── model.py                 # Definisi arsitektur BiLSTM (shared)
-│   ├── dataset_loader.py        # PyTorch Dataset & DataLoader (shared)
-│   ├── train.py                 # Tahap 3: Training loop (shared)
-│   ├── evaluate.py              # Tahap 4: Evaluasi model (shared)
-│   ├── predict_video.py         # Tahap 5: Prediksi dan visualisasi satu video huruf
-│   └── utils.py                 # Fungsi utilitas umum
+│   ├── common/
+│   │   ├── extract_landmarks.py # Ekstraksi MediaPipe untuk huruf dan kata
+│   │   └── utils.py             # Fungsi utilitas bersama
+│   ├── letters/
+│   │   ├── auto_recorder.py     # Perekam dataset huruf
+│   │   ├── normalize_letter_videos.py
+│   │   ├── preprocess.py
+│   │   ├── model.py
+│   │   ├── dataset_loader.py
+│   │   ├── train.py
+│   │   ├── evaluate.py
+│   │   ├── predict_video.py
+│   │   └── predict_webcam.py
+│   └── words/
+│       ├── normalize_word_videos.py
+│       ├── preprocess.py
+│       ├── model.py
+│       ├── dataset_loader.py
+│       ├── train.py
+│       └── evaluate.py
 │
 ├── notebooks/
 │   └── exploration.ipynb        # Notebook eksplorasi & visualisasi
@@ -313,16 +344,16 @@ Model/
 pip install -r requirements.txt
 
 # --- Task Huruf ---
-python src/extract_landmarks.py --input_dir dataset/letters/raw --output_dir dataset/letters/landmarks --max_num_hands 2
-python src/preprocess.py --input_dir dataset/letters/landmarks --output_dir dataset/letters/processed --max_seq_length 90 --normalization wrist_relative --augment_factor 3
-python src/train.py --config configs/letters.yaml
-python src/evaluate.py --model_path outputs/letters/models/best_model.pth --config configs/letters.yaml
+python -m src.common.extract_landmarks --input_dir dataset/letters/raw --output_dir dataset/letters/landmarks --max_num_hands 2
+python -m src.letters.preprocess --input_dir dataset/letters/landmarks --output_dir dataset/letters/processed --max_seq_length 90 --normalization wrist_relative --augment_factor 3
+python -m src.letters.train --config configs/letters.yaml
+python -m src.letters.evaluate --model_path outputs/letters/models/best_model.pth --config configs/letters.yaml
 
 # --- Task Kata (setelah video kata ditaruh di dataset/words/raw/{nama_kata}/) ---
-python src/extract_landmarks.py --input_dir dataset/words/raw --output_dir dataset/words/landmarks --max_num_hands 2
-python src/preprocess.py --input_dir dataset/words/landmarks --output_dir dataset/words/processed --max_seq_length <sesuaikan> --normalization wrist_relative --augment_factor 3
-python src/train.py --config configs/words.yaml
-python src/evaluate.py --model_path outputs/words/models/best_model.pth --config configs/words.yaml
+python -m src.common.extract_landmarks --input_dir dataset/words/raw --output_dir dataset/words/landmarks --max_num_hands 2
+python -m src.words.preprocess --config configs/words_motion.yaml
+python -m src.words.train --config configs/words_motion.yaml
+python -m src.words.evaluate --config configs/words_motion.yaml
 ```
 
 ---

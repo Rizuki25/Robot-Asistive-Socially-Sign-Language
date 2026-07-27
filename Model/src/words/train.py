@@ -12,9 +12,9 @@ import torch.nn as nn
 import torch.optim as optim
 import yaml
 
-from dataset_loader_words import create_word_dataloaders
-from model_words import WordMotionBiLSTM
-from utils import get_device, set_seed
+from src.common.utils import get_device, set_seed
+from src.words.dataset_loader import create_word_dataloaders
+from src.words.model import WordMotionBiLSTM
 
 
 def run_epoch(model, loader, criterion, device, optimizer=None, grad_clip=None):

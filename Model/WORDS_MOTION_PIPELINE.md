@@ -3,6 +3,18 @@
 Pipeline ini terpisah dari pipeline huruf. Ia tidak membaca atau menulis
 `dataset/letters`, `outputs/letters`, maupun `configs/letters.yaml`.
 
+## Normalisasi video lama ke 90 frame
+
+Video sumber tidak ditimpa. Program mempertahankan struktur kelas dan menulis
+hasil baru ke `dataset/words/raw_90/`:
+
+```powershell
+python -m src.words.normalize_word_videos
+```
+
+Setiap output didekode ulang dan wajib memiliki tepat 90 frame pada 30 FPS.
+Rincian hasil tersedia di `dataset/words/raw_90/normalization_report.csv`.
+
 ## Fitur per frame
 
 Setiap frame menghasilkan 140 fitur:
@@ -20,9 +32,9 @@ Data juga menyimpan panjang sequence asli. `WordMotionBiLSTM` menggunakan
 Jalankan dari folder `Model`:
 
 ```powershell
-python src/preprocess_words.py --config configs/words_motion.yaml
-python src/train_words.py --config configs/words_motion.yaml
-python src/evaluate_words.py --config configs/words_motion.yaml
+python -m src.words.preprocess --config configs/words_motion.yaml
+python -m src.words.train --config configs/words_motion.yaml
+python -m src.words.evaluate --config configs/words_motion.yaml
 ```
 
 Output baseline tersimpan terpisah:
@@ -43,9 +55,9 @@ meningkat dengan sehat dan validation tidak mengalami class collapse, lakukan
 eksperimen berikut secara satu per satu:
 
 ```powershell
-python src/preprocess_words.py --config configs/words_motion.yaml --augment_factor 1
-python src/train_words.py --config configs/words_motion.yaml
-python src/evaluate_words.py --config configs/words_motion.yaml
+python -m src.words.preprocess --config configs/words_motion.yaml --augment_factor 1
+python -m src.words.train --config configs/words_motion.yaml
+python -m src.words.evaluate --config configs/words_motion.yaml
 ```
 
 Jika factor 1 membantu, lanjutkan ke factor 2. Jangan langsung memakai factor 3.
