@@ -162,10 +162,10 @@ Gunakan `configs/letters_90.yaml` bersama checkpoint `outputs/letters_90`. Hinda
 
 #### Konfigurasi realtime yang direkomendasikan
 
-Berdasarkan pengujian realtime, `motion_threshold=0.001` dan `pause_frames=15` memberikan kompromi yang baik antara kecepatan respons dan kestabilan kelas A serta W:
+Berdasarkan pengujian realtime, `motion_threshold=0.001`, minimum 30 frame, dan voting 4 dari 5 prediksi memberikan kompromi yang baik antara kecepatan respons dan kestabilan kelas A serta W:
 
 ```powershell
-python -m src.letters.predict_webcam --config configs/letters_90.yaml --model_path outputs/letters_90/models/best_model.pth --motion_threshold 0.001 --pause_frames 15
+python -m src.letters.predict_webcam --config configs/letters_90.yaml --model_path outputs/letters_90/models/best_model.pth --motion_threshold 0.001 --pause_frames 15 --min_recording_frames 30 --prediction_interval 3 --vote_window 5 --vote_ratio 0.8 --stable_confidence 0.8 --rearm_motion_frames 3
 ```
 
 Saat berhasil memuat model yang digunakan pada evaluasi `letters_90`, terminal akan menampilkan checkpoint dari **epoch 37**.
@@ -173,9 +173,11 @@ Saat berhasil memuat model yang digunakan pada evaluasi `letters_90`, terminal a
 Alur inference berjalan otomatis dan berulang:
 
 1. `WAITING` — menunggu tangan mulai bergerak.
-2. `RECORDING` — mengumpulkan sequence landmark.
-3. Setelah tangan dianggap diam selama `pause_frames`, model melakukan prediksi.
-4. `RESULT` — hasil dan confidence ditampilkan, lalu sistem kembali menunggu gerakan berikutnya.
+2. `RECORDING` — mengumpulkan minimal 30 frame, lalu menjalankan prediksi berkala setiap tiga frame.
+3. Lima prediksi terbaru masuk ke voting. Hasil langsung dikunci jika sedikitnya empat vote sama dan rata-rata confidence kelas pemenang minimal 80%.
+4. Jika voting belum stabil, `pause_frames` tetap digunakan sebagai fallback setelah tangan diam.
+5. `RESULT` — hasil dan confidence ditampilkan tanpa pengguna harus menurunkan tangan.
+6. `REARM` — setelah hasil selesai ditampilkan, cukup gerakkan tangan ke pose berikutnya selama tiga frame; pose diam yang sama tidak akan memicu hasil berulang.
 
 #### Opsi webcam lain
 
@@ -197,18 +199,20 @@ Parameter penting:
 |---|---:|---|
 | `--camera_index` | `0` | Indeks kamera OpenCV |
 | `--motion_threshold` | `0.001` | Ambang perpindahan landmark yang dianggap gerakan |
-| `--pause_frames` | `15` | Jumlah frame diam berturut-turut sebelum prediksi |
-| `--result_frames` | `45` | Lama hasil ditampilkan sebelum reset |
+| `--pause_frames` | `15` | Frame diam sebelum fallback prediksi dijalankan |
+| `--min_recording_frames` | `30` | Sequence minimum sebelum rolling prediction; menjaga A/W dari prediksi terlalu dini |
+| `--prediction_interval` | `3` | Jarak frame antar-inferensi selama recording |
+| `--vote_window` | `5` | Jumlah prediksi terbaru yang ikut voting |
+| `--vote_ratio` | `0.8` | Proporsi vote kelas pemenang untuk mengunci hasil |
+| `--stable_confidence` | `0.8` | Rata-rata confidence kelas pemenang untuk mengunci hasil |
+| `--rearm_motion_frames` | `3` | Gerakan berturut-turut untuk mulai huruf berikutnya |
+| `--result_frames` | `45` | Lama hasil terkunci ditampilkan sebelum masuk `REARM` |
 | `--display_width` | `960` atau `640` | Lebar maksimum window |
-| `--min_confidence` | `0.0`–`1.0` | Confidence minimum untuk menandai hasil |
+| `--min_confidence` | `0.0`–`1.0` | Confidence minimum untuk memberi warna hasil akhir |
 
-`pause_frames` dapat disesuaikan berdasarkan FPS dan kestabilan prediksi:
+`pause_frames` sekarang berfungsi sebagai fallback jika voting belum stabil. Jangan menurunkan `min_recording_frames` di bawah 30 tanpa menguji ulang A dan W, karena kedua kelas tersebut sebelumnya salah pada sequence pendek. Jika ingin hasil terkunci lebih cepat, parameter yang lebih aman untuk disesuaikan adalah `prediction_interval`, `vote_window`, atau `vote_ratio`, tetapi nilai yang terlalu longgar dapat membuat prediksi berkedip atau salah terkunci.
 
-- `15` frame: rekomendasi; A dan W lebih stabil.
-- `12` frame atau kurang: hasil lebih cepat, tetapi pada pengujian realtime A dan W mulai salah kembali.
-- Lebih dari `15` frame: lebih stabil, tetapi pengguna harus menahan pose lebih lama.
-
-Lakukan gerakan secara jelas, tahan pose akhir sebentar, dan jangan langsung menurunkan tangan. Tekan **Q** atau **Esc** untuk keluar.
+Lakukan gerakan secara jelas dan tahan pose akhir. Ketika vote sudah stabil, hasil akan muncul meskipun tangan masih diangkat. Setelah hasil selesai ditampilkan, langsung gerakkan tangan ke pose baru tanpa perlu menurunkannya. Tekan **Q** atau **Esc** untuk keluar.
 
 Skeleton tubuh tanpa titik wajah hanya untuk visualisasi. Model tetap menggunakan landmark tangan. Mode webcam tidak merekam atau menyimpan video. Opsi `--mirror` membalik tampilan sekaligus input sebelum ditampilkan dan tidak direkomendasikan jika orientasi dataset training tidak dicerminkan.
 
