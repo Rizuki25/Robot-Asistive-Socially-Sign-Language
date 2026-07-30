@@ -13,6 +13,11 @@ import os
 from collections import Counter, deque
 from typing import Optional
 
+try:
+    import winsound
+except ImportError:
+    winsound = None
+
 import cv2
 import mediapipe as mp
 import numpy as np
@@ -124,6 +129,59 @@ def prediction_consensus(
     return stable, candidate, candidate_ratio, candidate_confidence
 
 
+class RecordedAudioPlayer:
+    """Play one user-recorded WAV file per locked prediction on Windows."""
+
+    def __init__(self, audio_dir: str, class_names: list[str]):
+        self.audio_dir = resolve_input_path(audio_dir)
+        self._missing_warnings = set()
+        self.available = winsound is not None
+
+        if not self.available:
+            print("[WARN] Pemutaran WAV hanya tersedia di Windows; prediksi tetap berjalan")
+            return
+
+        missing = [
+            label for label in class_names
+            if not os.path.isfile(self._path_for(label))
+        ]
+        if missing:
+            print(
+                f"[WARN] Rekaman suara belum lengkap di {self.audio_dir}: "
+                f"{', '.join(missing)}"
+            )
+        else:
+            print(f"[INFO] Rekaman suara A-Z siap: {self.audio_dir}")
+
+    def _path_for(self, label: str) -> str:
+        return os.path.join(self.audio_dir, f"{label.upper()}.wav")
+
+    def play(self, label: str) -> None:
+        """Play a label asynchronously; missing files warn only once."""
+        if not self.available:
+            return
+        path = self._path_for(label)
+        if not os.path.isfile(path):
+            if path not in self._missing_warnings:
+                print(f"[WARN] Rekaman suara tidak ditemukan: {path}")
+                self._missing_warnings.add(path)
+            return
+        try:
+            winsound.PlaySound(
+                path,
+                winsound.SND_FILENAME | winsound.SND_ASYNC | winsound.SND_NODEFAULT,
+            )
+        except RuntimeError as error:
+            if path not in self._missing_warnings:
+                print(f"[WARN] Rekaman suara gagal diputar ({path}): {error}")
+                self._missing_warnings.add(path)
+
+    def close(self) -> None:
+        """Stop an asynchronous WAV that is still playing."""
+        if self.available:
+            winsound.PlaySound(None, 0)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Prediksi huruf secara realtime dari webcam")
     parser.add_argument("--camera_index", type=int, default=0, help="Index webcam OpenCV (default: 0)")
@@ -140,6 +198,8 @@ def main() -> int:
     parser.add_argument("--vote_ratio", type=float, default=0.8, help="Rasio vote minimum untuk mengunci hasil (default: 0.8)")
     parser.add_argument("--stable_confidence", type=float, default=0.8, help="Rata-rata confidence minimum untuk mengunci hasil (default: 0.8)")
     parser.add_argument("--rearm_motion_frames", type=int, default=3, help="Frame gerak untuk membaca huruf berikutnya (default: 3)")
+    parser.add_argument("--audio_dir", default="assets/letters_audio", help="Folder rekaman A.wav-Z.wav (default: assets/letters_audio)")
+    parser.add_argument("--no_speech", action="store_true", help="Nonaktifkan pemutaran rekaman suara")
     parser.add_argument("--mirror", action="store_true", help="Balik tampilan seperti cermin; tidak disarankan untuk input model")
     args = parser.parse_args()
 
@@ -168,7 +228,6 @@ def main() -> int:
     if invalid_probability:
         print(f"[ERROR] {', '.join(invalid_probability)} harus berada di antara 0 dan 1")
         return 1
-
     config_path = resolve_input_path(args.config)
     model_path = resolve_input_path(args.model_path)
     if not os.path.isfile(config_path):
@@ -184,6 +243,7 @@ def main() -> int:
         return 1
 
     hands = pose = None
+    audio_player = None
     try:
         with open(config_path, "r", encoding="utf-8") as file:
             config = yaml.safe_load(file)
@@ -199,6 +259,11 @@ def main() -> int:
             dropout=config["model"]["dropout"],
         ).to(device)
         load_checkpoint(model_path, model, device=device)
+
+        if not args.no_speech:
+            audio_player = RecordedAudioPlayer(args.audio_dir, class_names)
+        else:
+            print("[INFO] Pemutaran rekaman suara dinonaktifkan (--no_speech)")
 
         max_num_hands = config["landmark"]["max_num_hands"]
         hands = mp.solutions.hands.Hands(
@@ -227,6 +292,21 @@ def main() -> int:
         prediction_history = deque(maxlen=args.vote_window)
         frames_since_prediction = 0
         rearm_motion_buffer = []
+
+        def lock_result(label: str, confidence: float, source: str) -> None:
+            """Lock and announce one prediction result."""
+            nonlocal result_label, result_confidence, result_countdown, state
+            result_label = label
+            result_confidence = confidence
+            result_countdown = args.result_frames
+            state = "RESULT"
+            print(
+                f"[RESULT] {source}: {result_label} "
+                f"(confidence: {result_confidence * 100:.2f}%)"
+            )
+            if audio_player is not None:
+                audio_player.play(result_label)
+
         print("[INFO] Webcam aktif. Hasil akan terkunci saat voting prediksi stabil.")
         print("[INFO] Setelah hasil tampil, cukup gerakkan tangan untuk membaca huruf berikutnya.")
 
@@ -287,14 +367,10 @@ def main() -> int:
                     )
                     candidate_label = class_names[candidate] if candidate is not None else ""
                     if stable_label is not None:
-                        result_label = class_names[stable_label]
-                        result_confidence = candidate_confidence
-                        result_countdown = args.result_frames
-                        state = "RESULT"
-                        print(
-                            f"[RESULT] Voting stabil: {result_label} "
-                            f"(vote: {candidate_ratio * 100:.0f}%, "
-                            f"confidence: {result_confidence * 100:.2f}%)"
+                        lock_result(
+                            class_names[stable_label],
+                            candidate_confidence,
+                            f"Voting stabil ({candidate_ratio * 100:.0f}% vote)",
                         )
 
                 if (
@@ -302,15 +378,13 @@ def main() -> int:
                     and len(prediction_history) >= args.vote_window
                     and quiet_frames >= args.pause_frames
                 ):
-                    label_index, result_confidence = predict_sequence(
+                    label_index, fallback_confidence = predict_sequence(
                         np.asarray(buffer), config, model, device
                     )
-                    result_label = class_names[int(label_index)]
-                    result_countdown = args.result_frames
-                    state = "RESULT"
-                    print(
-                        f"[RESULT] Fallback jeda: {result_label} "
-                        f"(confidence: {result_confidence * 100:.2f}%)"
+                    lock_result(
+                        class_names[int(label_index)],
+                        fallback_confidence,
+                        "Fallback jeda",
                     )
 
                 if state == "RESULT":
@@ -387,6 +461,8 @@ def main() -> int:
         return 1
     finally:
         capture.release()
+        if audio_player is not None:
+            audio_player.close()
         if hands is not None:
             hands.close()
         if pose is not None:

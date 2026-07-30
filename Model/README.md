@@ -170,6 +170,67 @@ python -m src.letters.predict_webcam --config configs/letters_90.yaml --model_pa
 
 Saat berhasil memuat model yang digunakan pada evaluasi `letters_90`, terminal akan menampilkan checkpoint dari **epoch 37**.
 
+#### Rekam suara sendiri untuk hasil prediksi
+
+Sistem menggunakan rekaman suara Anda sendiri, bukan Text-to-Speech sintetis. Instal dependency perekam melalui:
+
+```powershell
+pip install -r requirements.txt
+```
+
+Lihat daftar mikrofon dan perangkat output:
+
+```powershell
+python -m src.letters.record_letter_audio --list_devices
+```
+
+Jalankan perekam terpandu A–Z:
+
+```powershell
+python -m src.letters.record_letter_audio
+```
+
+Untuk setiap huruf, program akan:
+
+1. Meminta Anda mengucapkan `Huruf A`, `Huruf B`, dan seterusnya.
+2. Menunggu Enter untuk mulai merekam dan Enter lagi untuk berhenti.
+3. Memutar preview rekaman.
+4. Memberi pilihan **Simpan**, **Ulangi**, **Lewati**, atau **Quit**.
+
+Rekaman disimpan sebagai mono PCM WAV 44,1 kHz/16-bit:
+
+```text
+assets/letters_audio/A.wav
+assets/letters_audio/B.wav
+...
+assets/letters_audio/Z.wav
+```
+
+Jika ingin memilih mikrofon berdasarkan index dari `--list_devices`:
+
+```powershell
+python -m src.letters.record_letter_audio --device 1
+```
+
+Lanjutkan dari huruf tertentu atau rekam ulang file yang sudah ada:
+
+```powershell
+python -m src.letters.record_letter_audio --start_letter M
+python -m src.letters.record_letter_audio --overwrite
+```
+
+Ketika hasil voting atau fallback terkunci, file WAV sesuai huruf diputar tepat satu kali secara asynchronous sehingga webcam tetap responsif. Gunakan folder rekaman default atau tentukan folder lain:
+
+```powershell
+python -m src.letters.predict_webcam --config configs/letters_90.yaml --model_path outputs/letters_90/models/best_model.pth --motion_threshold 0.001 --pause_frames 15 --audio_dir assets/letters_audio
+```
+
+Jika file suatu huruf belum tersedia, terminal menampilkan warning dan prediksi tetap berjalan. Nonaktifkan seluruh audio dengan:
+
+```powershell
+python -m src.letters.predict_webcam --config configs/letters_90.yaml --model_path outputs/letters_90/models/best_model.pth --motion_threshold 0.001 --pause_frames 15 --no_speech
+```
+
 Alur inference berjalan otomatis dan berulang:
 
 1. `WAITING` — menunggu tangan mulai bergerak.
@@ -209,6 +270,8 @@ Parameter penting:
 | `--result_frames` | `45` | Lama hasil terkunci ditampilkan sebelum masuk `REARM` |
 | `--display_width` | `960` atau `640` | Lebar maksimum window |
 | `--min_confidence` | `0.0`–`1.0` | Confidence minimum untuk memberi warna hasil akhir |
+| `--audio_dir` | `assets/letters_audio` | Folder rekaman suara `A.wav`–`Z.wav` |
+| `--no_speech` | nonaktif | Jalankan prediksi tanpa memutar rekaman suara |
 
 `pause_frames` sekarang berfungsi sebagai fallback jika voting belum stabil. Jangan menurunkan `min_recording_frames` di bawah 30 tanpa menguji ulang A dan W, karena kedua kelas tersebut sebelumnya salah pada sequence pendek. Jika ingin hasil terkunci lebih cepat, parameter yang lebih aman untuk disesuaikan adalah `prediction_interval`, `vote_window`, atau `vote_ratio`, tetapi nilai yang terlalu longgar dapat membuat prediksi berkedip atau salah terkunci.
 
@@ -230,6 +293,8 @@ Skeleton tubuh tanpa titik wajah hanya untuk visualisasi. Model tetap menggunaka
 - `outputs/letters_90/figures/` — kurva training dan confusion matrix
 - `outputs/letters_90/results/` — metrics dan classification report
 - `outputs/letters_90/predictions/` — lokasi yang disarankan untuk video hasil prediksi
+- `assets/letters_audio/` — rekaman suara pengguna `A.wav`–`Z.wav`
+- `src/letters/record_letter_audio.py` — perekam suara A–Z terpandu
 - `src/letters/` — normalisasi, preprocessing, model, training, evaluasi, dan inference huruf
 - `src/common/` — ekstraksi landmark dan utilitas bersama
 
