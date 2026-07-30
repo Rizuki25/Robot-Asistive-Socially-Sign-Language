@@ -21,12 +21,20 @@ Thumbs.db
 # Jupyter Notebook checkpoints
 .ipynb_checkpoints/
 
-# Dataset (terlalu besar untuk Git) - per task (letters, words)
-Model/dataset/*/raw/*
-!Model/dataset/*/raw/.gitkeep
-Model/dataset/*/landmarks/
-Model/dataset/*/processed/
-Model/dataset/*/processed_*/
+# Dataset lokal (terlalu besar untuk Git)
+# Abaikan seluruh isi dataset, tetapi izinkan .gitkeep agar struktur folder bisa disimpan.
+/Model/dataset/**/*
+!/Model/dataset/**/
+!/Model/dataset/**/.gitkeep
+
+# Video (rekaman dataset dan hasil capture)
+*.avi
+*.mp4
+*.mov
+*.mkv
+*.webm
+*.wmv
+*.m4v
 
 # Output models & logs - per task (letters, words)
 Model/outputs/*/models/*

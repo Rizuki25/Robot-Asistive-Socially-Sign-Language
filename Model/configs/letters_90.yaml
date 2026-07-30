@@ -1,0 +1,62 @@
+# =============================================================
+# Konfigurasi Project: Sign Language Recognition - BiLSTM
+# Task: HURUF (fingerspelling A-Z, BISINDO - campuran 1 & 2 tangan)
+# =============================================================
+
+# --- Path ---
+paths:
+  raw_dataset: "dataset/letters/raw_90"
+  landmarks: "dataset/letters/landmarks_90"
+  processed: "dataset/letters/processed_90"
+  models: "outputs/letters_90/models"
+  logs: "outputs/letters_90/logs"
+  figures: "outputs/letters_90/figures"
+  results: "outputs/letters_90/results"
+
+
+# --- Ekstraksi Landmark ---
+landmark:
+  max_num_hands: 2              # Jumlah tangan yang dideteksi (BISINDO: sebagian huruf 2 tangan)
+  min_detection_confidence: 0.5 # Confidence minimum deteksi tangan
+  min_tracking_confidence: 0.5  # Confidence minimum tracking
+  num_landmarks: 21             # Jumlah titik landmark per tangan
+  num_coordinates: 3            # Koordinat per landmark (x, y, z)
+
+# --- Preprocessing ---
+preprocessing:
+  max_seq_length: 90            # Panjang sequence maksimum (padding/truncate)
+  normalization: "wrist_relative" # Metode normalisasi: "wrist_relative", "minmax", atau "zscore"
+  augment_factor: 3             # Jumlah salinan augmentasi per sample training (0 = nonaktif)
+  test_size: 0.15               # Proporsi data test
+  val_size: 0.15                # Proporsi data validation
+  random_seed: 42               # Seed untuk reproducibility
+
+# --- Model BiLSTM ---
+model:
+  input_size: 126               # 2 tangan x 21 landmarks x 3 koordinat (x, y, z)
+  hidden_size: 128              # Ukuran hidden state LSTM
+  num_layers: 2                 # Jumlah layer LSTM
+  dropout: 0.5                  # Dropout rate
+  bidirectional: true           # Gunakan BiLSTM
+
+# --- Training ---
+training:
+  batch_size: 32                # Ukuran batch
+  epochs: 100                   # Maksimum epoch
+  learning_rate: 0.001          # Learning rate awal
+  weight_decay: 0.0005          # L2 regularization
+  patience: 10                  # Early stopping patience
+  scheduler:
+    type: "ReduceLROnPlateau"   # Tipe scheduler
+    factor: 0.5                 # Faktor pengurangan LR
+    patience: 5                 # Patience scheduler
+  random_seed: 42               # Seed untuk reproducibility
+
+# --- Evaluasi ---
+evaluation:
+  metrics:
+    - "accuracy"
+    - "precision"
+    - "recall"
+    - "f1_score"
+    - "confusion_matrix"
