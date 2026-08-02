@@ -41,6 +41,8 @@ Aplikasi memiliki 3 menu utama:
      - bubble kiri: hasil bahasa isyarat dari penyandang disabilitas/robot/model
      - bubble kanan: hasil speech-to-text dari orang normal
    - Semua HP/laptop yang join room sama melihat pesan yang sama.
+   - UI hanya mempertahankan tiga pesan terbaru agar mode percakapan muat dalam
+     satu viewport tanpa scroll halaman.
 
 ## Arsitektur saat ini
 

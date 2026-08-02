@@ -42,7 +42,7 @@ Digunakan saat penyandang disabilitas ingin menyampaikan pesan kepada orang norm
 
 Komponen:
 
-- Area kamera/stream robot.
+- Status pemrosesan kamera di laptop; stream video ke HP dinonaktifkan agar ringan.
 - Panel hasil pengenalan.
 - Tombol `🔊 Membacakan` untuk text-to-speech.
 

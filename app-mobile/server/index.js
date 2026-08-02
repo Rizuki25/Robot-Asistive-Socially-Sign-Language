@@ -23,12 +23,6 @@ function requireModelApiKey(request, response, next) {
   next();
 }
 
-function getRoomId(request) {
-  return String(request.query.roomId || request.get("x-room-id") || "demo-ta")
-    .trim()
-    .slice(0, 100) || "demo-ta";
-}
-
 app.use(
   cors({
     origin: CLIENT_ORIGIN,
@@ -74,26 +68,6 @@ app.post("/api/sign-result", requireModelApiKey, (request, response) => {
   io.to(roomId).emit("message", message);
   response.json({ message: "Hasil bahasa isyarat dikirim.", data: message });
 });
-
-app.post(
-  "/api/video-frame",
-  requireModelApiKey,
-  express.raw({ type: "image/jpeg", limit: "2mb" }),
-  (request, response) => {
-    if (!Buffer.isBuffer(request.body) || request.body.length === 0) {
-      response.status(400).json({ message: "Frame JPEG wajib dikirim." });
-      return;
-    }
-
-    const roomId = getRoomId(request);
-    io.to(roomId).emit("video-frame", {
-      roomId,
-      image: request.body,
-      timestamp: Date.now(),
-    });
-    response.status(202).end();
-  },
-);
 
 io.on("connection", (socket) => {
   console.log("Client connected:", socket.id);

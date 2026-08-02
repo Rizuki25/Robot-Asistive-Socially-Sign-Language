@@ -15,7 +15,6 @@ import queue
 import threading
 import time
 import urllib.error
-import urllib.parse
 import urllib.request
 from collections import Counter, deque
 from typing import Optional
@@ -190,43 +189,29 @@ class RecordedAudioPlayer:
 
 
 class MobileAppPublisher:
-    """Publish locked predictions and throttled JPEG frames without blocking inference."""
+    """Publish locked predictions without blocking webcam inference."""
 
     def __init__(
         self,
         server_url: str,
         room_id: str,
         api_key: str,
-        stream_fps: float,
-        stream_width: int,
-        jpeg_quality: int,
     ):
         self.server_url = server_url.rstrip("/")
         self.room_id = room_id
         self.api_key = api_key
-        self.stream_interval = 1.0 / stream_fps
-        self.stream_width = stream_width
-        self.jpeg_quality = jpeg_quality
-        self._next_frame_time = 0.0
         self._last_warning_time = 0.0
-        self._frame_queue = queue.Queue(maxsize=1)
         self._result_queue = queue.Queue()
         self._stop_event = threading.Event()
-        self._frame_thread = threading.Thread(
-            target=self._frame_worker,
-            name="mobile-frame-publisher",
-            daemon=True,
-        )
         self._result_thread = threading.Thread(
             target=self._result_worker,
             name="mobile-result-publisher",
             daemon=True,
         )
-        self._frame_thread.start()
         self._result_thread.start()
         print(
             f"[INFO] Sinkronisasi app aktif: {self.server_url} "
-            f"(room: {self.room_id}, stream: {stream_fps:g} FPS)"
+            f"(room: {self.room_id}, hanya hasil prediksi)"
         )
 
     def _headers(self, content_type: str) -> dict[str, str]:
@@ -251,40 +236,6 @@ class MobileAppPublisher:
             print(f"[WARN] Sinkronisasi app gagal: {message}")
             self._last_warning_time = now
 
-    def publish_frame(self, frame: np.ndarray) -> None:
-        now = time.monotonic()
-        if now < self._next_frame_time:
-            return
-        self._next_frame_time = now + self.stream_interval
-
-        height, width = frame.shape[:2]
-        if width > self.stream_width:
-            scale = self.stream_width / width
-            frame = cv2.resize(
-                frame,
-                (self.stream_width, max(1, int(height * scale))),
-                interpolation=cv2.INTER_AREA,
-            )
-
-        encoded_ok, encoded = cv2.imencode(
-            ".jpg",
-            frame,
-            [cv2.IMWRITE_JPEG_QUALITY, self.jpeg_quality],
-        )
-        if not encoded_ok:
-            self._warn("frame JPEG tidak dapat dibuat")
-            return
-
-        if self._frame_queue.full():
-            try:
-                self._frame_queue.get_nowait()
-            except queue.Empty:
-                pass
-        try:
-            self._frame_queue.put_nowait(encoded.tobytes())
-        except queue.Full:
-            pass
-
     def publish_prediction(self, label: str, confidence: float, source: str) -> None:
         self._result_queue.put(
             {
@@ -294,19 +245,6 @@ class MobileAppPublisher:
                 "source": f"predict_webcam:{source}",
             }
         )
-
-    def _frame_worker(self) -> None:
-        query = urllib.parse.urlencode({"roomId": self.room_id})
-        path = f"/api/video-frame?{query}"
-        while not self._stop_event.is_set():
-            try:
-                frame_bytes = self._frame_queue.get(timeout=0.2)
-            except queue.Empty:
-                continue
-            try:
-                self._post(path, frame_bytes, "image/jpeg")
-            except (OSError, urllib.error.URLError) as error:
-                self._warn(str(error))
 
     def _result_worker(self) -> None:
         while not self._stop_event.is_set():
@@ -329,7 +267,6 @@ class MobileAppPublisher:
 
     def close(self) -> None:
         self._stop_event.set()
-        self._frame_thread.join(timeout=1)
         self._result_thread.join(timeout=1)
 
 
@@ -363,9 +300,6 @@ def main() -> int:
         default=os.environ.get("MODEL_API_KEY", ""),
         help="API key opsional yang sama dengan MODEL_API_KEY di backend",
     )
-    parser.add_argument("--stream_fps", type=float, default=8.0, help="FPS stream ke app (default: 8)")
-    parser.add_argument("--stream_width", type=int, default=640, help="Lebar maksimum stream JPEG (default: 640)")
-    parser.add_argument("--stream_jpeg_quality", type=int, default=70, help="Kualitas JPEG 1-100 (default: 70)")
     args = parser.parse_args()
 
     positive_values = {
@@ -377,8 +311,6 @@ def main() -> int:
         "prediction_interval": args.prediction_interval,
         "vote_window": args.vote_window,
         "rearm_motion_frames": args.rearm_motion_frames,
-        "stream_fps": args.stream_fps,
-        "stream_width": args.stream_width,
     }
     invalid_positive = [name for name, value in positive_values.items() if value <= 0]
     if invalid_positive:
@@ -394,9 +326,6 @@ def main() -> int:
     ]
     if invalid_probability:
         print(f"[ERROR] {', '.join(invalid_probability)} harus berada di antara 0 dan 1")
-        return 1
-    if not 1 <= args.stream_jpeg_quality <= 100:
-        print("[ERROR] stream_jpeg_quality harus berada di antara 1 dan 100")
         return 1
     config_path = resolve_input_path(args.config)
     model_path = resolve_input_path(args.model_path)
@@ -441,9 +370,6 @@ def main() -> int:
                 server_url=args.server_url,
                 room_id=args.room_id.strip() or "demo-ta",
                 api_key=args.model_api_key,
-                stream_fps=args.stream_fps,
-                stream_width=args.stream_width,
-                jpeg_quality=args.stream_jpeg_quality,
             )
         else:
             print("[INFO] Sinkronisasi app nonaktif; gunakan --server_url untuk mengaktifkan")
@@ -641,8 +567,6 @@ def main() -> int:
             if scale < 1.0:
                 frame = cv2.resize(frame, (int(source_width * scale), int(source_height * scale)), interpolation=cv2.INTER_AREA)
             put_status(frame, title, detail, color)
-            if app_publisher is not None:
-                app_publisher.publish_frame(frame)
             cv2.imshow(WINDOW_NAME, frame)
             key = cv2.waitKey(1) & 0xFF
             if key in (ord("q"), 27):

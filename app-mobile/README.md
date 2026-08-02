@@ -174,6 +174,9 @@ Setelah pertama kali dibuka, app menyimpan URL backend di browser HP. Selanjutny
 5. Karena frontend dibuka lewat HTTPS Cloudflare Tunnel, microphone/speech-to-text di HP bisa berjalan.
 6. Pesan akan dikirim ke backend tunnel dan muncul di semua perangkat.
 
+Mode percakapan hanya menyimpan tiga pesan terbaru di layar. Ketika pesan baru
+masuk, pesan paling lama otomatis dihapus agar halaman tidak perlu di-scroll.
+
 ### Catatan penting
 
 - Jangan tutup terminal backend, frontend, dan dua tunnel Cloudflare.
@@ -213,11 +216,11 @@ predict_webcam.py -> backend lokal :3001 -> Cloudflare Tunnel -> frontend Vercel
 Backend menerima:
 
 - `POST /api/sign-result` untuk hasil prediksi yang sudah terkunci.
-- `POST /api/video-frame?roomId=demo-ta` dengan body JPEG untuk frame kamera.
 
-Frame dan hasil prediksi diteruskan lewat Socket.IO hanya ke perangkat yang join
-room yang sama. Halaman **Bahasa Isyarat -> Suara** menampilkan frame hasil
-anotasi model, hasil teks, tombol membacakan, dan opsi suara otomatis.
+Hasil prediksi diteruskan lewat Socket.IO hanya ke perangkat yang join room yang
+sama. Video kamera tetap diproses dan ditampilkan hanya di laptop; tidak ada
+frame yang dikirim ke backend atau HP. Halaman **Bahasa Isyarat -> Suara** hanya
+menampilkan hasil teks, tombol membacakan, dan opsi suara otomatis.
 
 ### Menjalankan
 
@@ -244,7 +247,7 @@ Terminal model:
 
 ```powershell
 cd "D:\Robot-Asistive-Socially-Sign-Language\Model"
-python -m src.letters.predict_webcam --config configs/letters_90.yaml --model_path outputs/letters_90/models/best_model.pth --motion_threshold 0.001 --pause_frames 15 --min_recording_frames 30 --prediction_interval 3 --vote_window 5 --vote_ratio 0.8 --stable_confidence 0.8 --rearm_motion_frames 3 --server_url http://localhost:3001 --room_id demo-ta --stream_fps 8 --stream_width 640 --no_speech
+python -m src.letters.predict_webcam --config configs/letters_90.yaml --model_path outputs/letters_90/models/best_model.pth --motion_threshold 0.001 --pause_frames 15 --min_recording_frames 30 --prediction_interval 3 --vote_window 5 --vote_ratio 0.8 --stable_confidence 0.8 --rearm_motion_frames 3 --server_url http://localhost:3001 --room_id demo-ta --no_speech
 ```
 
 `--no_speech` menonaktifkan suara lokal dari laptop karena hasil akan dibacakan
