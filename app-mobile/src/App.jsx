@@ -267,9 +267,9 @@ function App() {
   };
 
   return (
-    <main className="h-dvh overflow-hidden bg-slate-100 px-4 py-4 text-slate-950 sm:py-6">
-      <section className="mx-auto flex h-full w-full max-w-md flex-col overflow-hidden rounded-[2rem] bg-white p-2 shadow-xl shadow-slate-300/50 ring-1 ring-slate-100">
-        <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-[1.5rem] bg-slate-50 p-5">
+    <main className="min-h-screen bg-slate-100 px-4 py-4 text-slate-950 sm:py-6">
+      <section className="mx-auto flex min-h-[calc(100vh-2rem)] w-full max-w-md flex-col rounded-[2rem] bg-white p-2 shadow-xl shadow-slate-300/50 ring-1 ring-slate-100 sm:min-h-[calc(100vh-3rem)]">
+        <div className="flex flex-1 flex-col rounded-[1.5rem] bg-slate-50 p-5">
           {mode === MODES.MENU && (
             <ModeSelector
               onSignToSpeech={() => setMode(MODES.SIGN_TO_SPEECH)}
@@ -555,7 +555,7 @@ function SignToSpeechScreen({
   onBack,
 }) {
   return (
-    <div className="-mt-5 flex min-h-0 flex-1 flex-col overflow-hidden">
+    <div className="-mt-5 flex flex-1 flex-col">
       {/* Header hijau full-bleed */}
       <div className="-mx-5 rounded-t-[1.5rem] bg-gradient-to-r from-teal-600 to-emerald-500 px-5 py-4">
         <div className="flex items-center gap-3">
@@ -573,25 +573,21 @@ function SignToSpeechScreen({
         </div>
       </div>
 
-      {/* Status pemrosesan model tanpa mengirim stream kamera */}
-      <div className="-mx-5 shrink-0 overflow-hidden bg-slate-950 px-5 pb-5 pt-4">
+      {/* Area kamera dipertahankan, stream video dinonaktifkan */}
+      <div className="-mx-5 bg-slate-950 px-5 pb-6 pt-4">
         <span className="mb-3 inline-flex items-center gap-2 rounded-full bg-emerald-500/20 px-3 py-1 text-xs font-semibold text-emerald-300">
-          <span className="h-2 w-2 rounded-full bg-emerald-400" />
-          Mode ringan aktif
+          <span className="h-2 w-2 rounded-full bg-amber-400" />
+          Kamera Nonaktif
         </span>
-        <div className="flex w-full min-w-0 max-w-full items-center gap-4 overflow-hidden rounded-2xl border border-slate-700 bg-slate-900 p-4">
-          <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-slate-800">
-            <CameraIcon className="h-6 w-6 text-slate-400" />
-          </span>
-          <div className="min-w-0">
-            <p className="text-sm font-semibold text-slate-200">
-              Kamera diproses di laptop
-            </p>
-            <p className="mt-1 break-words text-xs leading-5 text-slate-400">
-              App hanya menerima hasil teks agar koneksi lebih ringan.
-            </p>
-          </div>
+        <div className="flex min-h-52 w-full min-w-0 max-w-full flex-col items-center justify-center overflow-hidden rounded-2xl border border-dashed border-slate-600 p-6 text-center">
+          <CameraIcon className="h-12 w-12 text-slate-500" />
+          <p className="mt-3 max-w-full break-words text-sm font-semibold text-slate-400">
+            Stream Kamera Dinonaktifkan
+          </p>
         </div>
+        <p className="mt-3 text-center text-[11px] font-medium text-slate-400">
+          Hanya hasil teks yang diterima dari model
+        </p>
         <p className="mt-3 flex items-center justify-center gap-1.5 text-center text-[11px] font-medium text-slate-400">
           <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
           Room: <span className="font-semibold text-emerald-300">
@@ -603,7 +599,7 @@ function SignToSpeechScreen({
       </div>
 
       {/* Hasil terjemahan */}
-      <div className="flex min-h-0 flex-1 flex-col pt-4">
+      <div className="flex flex-1 flex-col pt-5">
         <p className="text-xs font-bold uppercase tracking-[0.15em] text-teal-700/70">
           Hasil Terjemahan
         </p>
@@ -774,9 +770,9 @@ function ConversationScreen({
   onStartListening,
 }) {
   return (
-    <div className="-mt-5 flex min-h-0 flex-1 flex-col overflow-hidden">
+    <div className="-mt-5 flex flex-1 flex-col">
       {/* Header hijau full-bleed */}
-      <div className="-mx-5 shrink-0 rounded-t-[1.5rem] bg-gradient-to-r from-teal-600 to-emerald-500 px-5 py-3.5">
+      <div className="-mx-5 rounded-t-[1.5rem] bg-gradient-to-r from-teal-600 to-emerald-500 px-5 py-4">
         <div className="flex items-center gap-3">
           <button
             type="button"
@@ -791,7 +787,7 @@ function ConversationScreen({
       </div>
 
       {/* Bar room server (nama room tetap dimunculkan) */}
-      <div className="-mx-5 shrink-0 border-b border-slate-100 bg-white px-5 py-2">
+      <div className="-mx-5 border-b border-slate-100 bg-white px-5 py-2">
         <div className="flex items-center gap-2">
           <span className="text-[10px] font-bold uppercase tracking-wide text-slate-400">
             Room
@@ -819,7 +815,7 @@ function ConversationScreen({
 
       {/* Area chat */}
       <div
-        className="-mx-5 flex min-h-0 flex-1 flex-col justify-end gap-2 overflow-hidden px-5 py-2"
+        className="-mx-5 flex min-h-0 flex-1 flex-col gap-4 overflow-hidden px-5 py-4"
       >
         {messages.length === 0 && (
           <div className="flex flex-1 items-center justify-center text-center text-sm font-medium leading-6 text-slate-400">
@@ -844,12 +840,12 @@ function ConversationScreen({
       </div>
 
       {/* Panel input bawah */}
-      <div className="-mx-5 -mb-5 flex shrink-0 flex-col gap-2 rounded-b-[1.5rem] border-t border-slate-100 bg-white px-5 pb-3 pt-3">
+      <div className="-mx-5 -mb-5 flex flex-col gap-3 rounded-b-[1.5rem] border-t border-slate-100 bg-white px-5 pb-5 pt-4">
         <button
           type="button"
           onClick={onStartListening}
           disabled={isListening}
-          className="mx-auto inline-flex items-center gap-2 rounded-full bg-gradient-to-r from-teal-600 to-emerald-500 px-5 py-2.5 text-sm font-bold text-white shadow-md shadow-emerald-200 transition active:scale-95 disabled:opacity-60"
+          className="mx-auto inline-flex items-center gap-2 rounded-full bg-gradient-to-r from-teal-600 to-emerald-500 px-6 py-3 text-sm font-bold text-white shadow-lg shadow-emerald-200 transition active:scale-95 disabled:opacity-60"
         >
           <MicIcon className="h-5 w-5" />
           {isListening ? "Mendengarkan..." : "Balas dengan Suara"}
@@ -883,7 +879,7 @@ function ConversationScreen({
         </div>
 
         {speechStatus && (
-          <p className="line-clamp-1 text-center text-[10px] font-medium leading-4 text-slate-400">
+          <p className="line-clamp-2 text-center text-[11px] font-medium leading-4 text-slate-400">
             {speechStatus}
           </p>
         )}
@@ -897,22 +893,22 @@ function ConversationBubble({ align, label, text, showAction, onAction }) {
 
   return (
     <div className={`flex flex-col ${isRight ? "items-end" : "items-start"}`}>
-      <span className="mb-0.5 px-1 text-[10px] font-semibold text-slate-400">
+      <span className="mb-1 px-1 text-[11px] font-semibold text-slate-400">
         {label}
       </span>
       <div
-        className={`max-w-[82%] rounded-2xl px-3 py-2 shadow-sm ${
+        className={`max-w-[80%] rounded-2xl px-4 py-3 shadow-sm ${
           isRight
             ? "bg-gradient-to-br from-teal-600 to-emerald-500 text-white"
             : "bg-white text-slate-900"
         }`}
       >
-        <p className="break-words text-sm font-semibold leading-5">{text}</p>
+        <p className="text-sm font-semibold leading-6">{text}</p>
         {showAction && (
           <button
             type="button"
             onClick={onAction}
-            className="mt-1.5 inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-2.5 py-1 text-[11px] font-semibold text-emerald-700 transition active:scale-95"
+            className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700 transition active:scale-95"
           >
             <SpeakerIcon className="h-3.5 w-3.5" />
             Bacakan
