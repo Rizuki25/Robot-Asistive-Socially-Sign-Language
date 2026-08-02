@@ -11,6 +11,26 @@ const MODES = {
 const DEFAULT_ROOM_ID = "demo-ta";
 const SOCKET_URL_STORAGE_KEY = "sign-language-socket-url";
 
+function createFrameBlob(image) {
+  if (image instanceof Blob) {
+    return image;
+  }
+
+  if (image instanceof ArrayBuffer) {
+    return new Blob([image], { type: "image/jpeg" });
+  }
+
+  if (ArrayBuffer.isView(image)) {
+    return new Blob([image], { type: "image/jpeg" });
+  }
+
+  if (image?.type === "Buffer" && Array.isArray(image.data)) {
+    return new Blob([new Uint8Array(image.data)], { type: "image/jpeg" });
+  }
+
+  return null;
+}
+
 function getDefaultSocketUrl() {
   const { protocol, hostname } = window.location;
   const isLocalNetwork =
@@ -48,11 +68,17 @@ const SOCKET_URL = getSocketUrl();
 function App() {
   const socketRef = useRef(null);
   const recognitionRef = useRef(null);
+  const modeRef = useRef(MODES.MENU);
+  const autoSpeakRef = useRef(true);
+  const videoFrameUrlRef = useRef("");
   const [mode, setMode] = useState(MODES.MENU);
-  const [recognizedText, setRecognizedText] = useState("Saya ingin minum");
+  const [recognizedText, setRecognizedText] = useState("");
   const [transcript, setTranscript] = useState("");
   const [speechStatus, setSpeechStatus] = useState("Siap mendengarkan");
   const [isListening, setIsListening] = useState(false);
+  const [autoSpeak, setAutoSpeak] = useState(true);
+  const [videoFrameUrl, setVideoFrameUrl] = useState("");
+  const [streamStatus, setStreamStatus] = useState("Menunggu stream model...");
   const [roomId, setRoomId] = useState(DEFAULT_ROOM_ID);
   const [activeRoomId, setActiveRoomId] = useState(DEFAULT_ROOM_ID);
   const [socketStatus, setSocketStatus] = useState("Menghubungkan realtime...");
@@ -61,6 +87,55 @@ function App() {
   const speechRecognition = useMemo(() => {
     return window.SpeechRecognition || window.webkitSpeechRecognition || null;
   }, []);
+
+  useEffect(() => {
+    modeRef.current = mode;
+  }, [mode]);
+
+  useEffect(() => {
+    autoSpeakRef.current = autoSpeak;
+  }, [autoSpeak]);
+
+  useEffect(
+    () => () => {
+      if (videoFrameUrlRef.current) {
+        URL.revokeObjectURL(videoFrameUrlRef.current);
+      }
+    },
+    [],
+  );
+
+  function clearVideoFrame() {
+    if (videoFrameUrlRef.current) {
+      URL.revokeObjectURL(videoFrameUrlRef.current);
+      videoFrameUrlRef.current = "";
+    }
+    setVideoFrameUrl("");
+  }
+
+  function speakText(text, silent = false) {
+    const cleanText = String(text || "").trim();
+
+    if (!cleanText) {
+      return;
+    }
+
+    if (!("speechSynthesis" in window)) {
+      if (!silent) {
+        alert("Browser belum mendukung text-to-speech.");
+      }
+      return;
+    }
+
+    const spokenText = /^[a-z]$/i.test(cleanText)
+      ? `Huruf ${cleanText.toUpperCase()}`
+      : cleanText;
+    const utterance = new SpeechSynthesisUtterance(spokenText);
+    utterance.lang = "id-ID";
+    utterance.rate = 0.95;
+    window.speechSynthesis.cancel();
+    window.speechSynthesis.speak(utterance);
+  }
 
   useEffect(() => {
     if (!SOCKET_URL) {
@@ -83,6 +158,8 @@ function App() {
 
     socket.on("disconnect", () => {
       setSocketStatus("Realtime terputus");
+      setStreamStatus("Stream kamera terputus");
+      clearVideoFrame();
     });
 
     socket.on("connect_error", () => {
@@ -96,10 +173,38 @@ function App() {
 
       if (message.sender === "sign") {
         setRecognizedText(message.text);
+
+        if (
+          autoSpeakRef.current &&
+          modeRef.current === MODES.SIGN_TO_SPEECH
+        ) {
+          speakText(message.text, true);
+        }
       }
 
       if (message.sender === "voice") {
         setTranscript(message.text);
+      }
+    });
+
+    socket.on("video-frame", (payload) => {
+      if (payload?.roomId && payload.roomId !== activeRoomId) {
+        return;
+      }
+
+      const blob = createFrameBlob(payload?.image);
+      if (!blob) {
+        return;
+      }
+
+      const nextUrl = URL.createObjectURL(blob);
+      const previousUrl = videoFrameUrlRef.current;
+      videoFrameUrlRef.current = nextUrl;
+      setVideoFrameUrl(nextUrl);
+      setStreamStatus("Stream kamera realtime aktif");
+
+      if (previousUrl) {
+        URL.revokeObjectURL(previousUrl);
       }
     });
 
@@ -112,6 +217,8 @@ function App() {
     const nextRoomId = roomId.trim() || DEFAULT_ROOM_ID;
     setActiveRoomId(nextRoomId);
     setMessages([]);
+    setStreamStatus("Menunggu stream model...");
+    clearVideoFrame();
 
     if (socketRef.current?.connected) {
       socketRef.current.emit("join-room", nextRoomId);
@@ -138,23 +245,6 @@ function App() {
       sender,
       text: cleanText,
     });
-  };
-
-  const speakText = (text) => {
-    if (!text) {
-      return;
-    }
-
-    if (!("speechSynthesis" in window)) {
-      alert("Browser belum mendukung text-to-speech.");
-      return;
-    }
-
-    const utterance = new SpeechSynthesisUtterance(text);
-    utterance.lang = "id-ID";
-    utterance.rate = 0.95;
-    window.speechSynthesis.cancel();
-    window.speechSynthesis.speak(utterance);
   };
 
   const speakRecognizedText = () => {
@@ -259,6 +349,10 @@ function App() {
               onSpeak={speakRecognizedText}
               onSend={() => sendRealtimeMessage("sign", recognizedText)}
               socketStatus={socketStatus}
+              streamStatus={streamStatus}
+              videoFrameUrl={videoFrameUrl}
+              autoSpeak={autoSpeak}
+              onToggleAutoSpeak={() => setAutoSpeak((current) => !current)}
               activeRoomId={activeRoomId}
               onBack={() => setMode(MODES.MENU)}
             />
@@ -523,6 +617,10 @@ function SignToSpeechScreen({
   onSpeak,
   onSend,
   socketStatus,
+  streamStatus,
+  videoFrameUrl,
+  autoSpeak,
+  onToggleAutoSpeak,
   activeRoomId,
   onBack,
 }) {
@@ -548,15 +646,32 @@ function SignToSpeechScreen({
       {/* Area stream kamera (gelap) full-bleed */}
       <div className="-mx-5 bg-slate-950 px-5 pb-6 pt-4">
         <span className="mb-3 inline-flex items-center gap-2 rounded-full bg-emerald-500/20 px-3 py-1 text-xs font-semibold text-emerald-300">
-          <span className="h-2 w-2 rounded-full bg-emerald-400" />
-          Mendeteksi Gerakan...
+          <span
+            className={`h-2 w-2 rounded-full ${
+              videoFrameUrl ? "animate-pulse bg-emerald-400" : "bg-amber-400"
+            }`}
+          />
+          {videoFrameUrl ? "Mendeteksi Gerakan..." : "Menunggu Kamera..."}
         </span>
-        <div className="flex min-h-52 flex-col items-center justify-center rounded-2xl border border-dashed border-slate-600 p-6 text-center">
-          <CameraIcon className="h-12 w-12 text-slate-500" />
-          <p className="mt-3 text-sm font-semibold text-slate-400">
-            Stream Kamera Aktif
-          </p>
+        <div className="flex aspect-video min-h-52 flex-col items-center justify-center overflow-hidden rounded-2xl border border-slate-700 bg-black text-center">
+          {videoFrameUrl ? (
+            <img
+              src={videoFrameUrl}
+              alt="Stream realtime model bahasa isyarat"
+              className="h-full w-full object-contain"
+            />
+          ) : (
+            <>
+              <CameraIcon className="h-12 w-12 text-slate-500" />
+              <p className="mt-3 px-6 text-sm font-semibold text-slate-400">
+                Jalankan model webcam untuk menampilkan stream
+              </p>
+            </>
+          )}
         </div>
+        <p className="mt-2 text-center text-[11px] font-medium text-slate-400">
+          {streamStatus}
+        </p>
         <p className="mt-3 flex items-center justify-center gap-1.5 text-center text-[11px] font-medium text-slate-400">
           <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
           Room: <span className="font-semibold text-emerald-300">
@@ -579,15 +694,35 @@ function SignToSpeechScreen({
           <button
             type="button"
             onClick={onSpeak}
-            className="mt-6 inline-flex items-center gap-2 rounded-full bg-gradient-to-r from-teal-600 to-emerald-500 px-7 py-3 text-base font-bold text-white shadow-lg shadow-emerald-200 transition hover:brightness-105 active:scale-[0.98]"
+            disabled={!recognizedText}
+            className="mt-6 inline-flex items-center gap-2 rounded-full bg-gradient-to-r from-teal-600 to-emerald-500 px-7 py-3 text-base font-bold text-white shadow-lg shadow-emerald-200 transition hover:brightness-105 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50"
           >
             <SpeakerIcon className="h-5 w-5" />
             Membacakan
           </button>
           <button
             type="button"
+            role="switch"
+            aria-checked={autoSpeak}
+            onClick={onToggleAutoSpeak}
+            className={`mt-4 inline-flex items-center gap-2 rounded-full px-4 py-2 text-xs font-bold transition active:scale-95 ${
+              autoSpeak
+                ? "bg-emerald-100 text-emerald-700"
+                : "bg-slate-100 text-slate-500"
+            }`}
+          >
+            <span
+              className={`h-2.5 w-2.5 rounded-full ${
+                autoSpeak ? "bg-emerald-500" : "bg-slate-400"
+              }`}
+            />
+            Suara otomatis: {autoSpeak ? "Aktif" : "Nonaktif"}
+          </button>
+          <button
+            type="button"
             onClick={onSend}
-            className="mt-4 text-xs font-semibold text-slate-400 underline-offset-2 transition hover:text-slate-600 hover:underline"
+            disabled={!recognizedText}
+            className="mt-4 text-xs font-semibold text-slate-400 underline-offset-2 transition hover:text-slate-600 hover:underline disabled:cursor-not-allowed disabled:opacity-50"
           >
             Kirim ke semua perangkat
           </button>

@@ -279,6 +279,36 @@ Lakukan gerakan secara jelas dan tahan pose akhir. Ketika vote sudah stabil, has
 
 Skeleton tubuh tanpa titik wajah hanya untuk visualisasi. Model tetap menggunakan landmark tangan. Mode webcam tidak merekam atau menyimpan video. Opsi `--mirror` membalik tampilan sekaligus input sebelum ditampilkan dan tidak direkomendasikan jika orientasi dataset training tidak dicerminkan.
 
+#### Kirim hasil dan stream webcam ke app mobile web
+
+Jalankan backend `app-mobile` pada port `3001`, lalu tambahkan opsi berikut ke
+perintah webcam:
+
+```powershell
+python -m src.letters.predict_webcam --config configs/letters_90.yaml --model_path outputs/letters_90/models/best_model.pth --motion_threshold 0.001 --pause_frames 15 --min_recording_frames 30 --prediction_interval 3 --vote_window 5 --vote_ratio 0.8 --stable_confidence 0.8 --rearm_motion_frames 3 --server_url http://localhost:3001 --room_id demo-ta --stream_fps 8 --stream_width 640 --no_speech
+```
+
+Model akan:
+
+1. Mengirim frame JPEG hasil anotasi ke backend secara non-blocking.
+2. Mengirim label dan confidence ketika hasil prediksi terkunci.
+3. Menampilkan stream, teks, dan suara melalui frontend yang terhubung ke room
+   `demo-ta`.
+
+Gunakan URL backend lokal pada `--server_url`. Cloudflare Tunnel cukup dijalankan
+untuk backend; model tidak perlu mengirim data keluar melalui URL tunnel.
+
+Opsi integrasi:
+
+| Parameter | Default | Fungsi |
+|---|---:|---|
+| `--server_url` | kosong | URL backend lokal; integrasi nonaktif jika kosong |
+| `--room_id` | `demo-ta` | Room tujuan hasil dan stream |
+| `--stream_fps` | `8` | Batas frame per detik yang dikirim |
+| `--stream_width` | `640` | Lebar maksimum JPEG stream |
+| `--stream_jpeg_quality` | `70` | Kualitas kompresi JPEG |
+| `--model_api_key` | kosong | API key opsional, atau gunakan environment `MODEL_API_KEY` |
+
 > **Catatan PowerShell:** karakter `\` bukan penyambung baris. Tulis perintah dalam satu baris seperti contoh di atas, atau gunakan backtick (`` ` ``) pada akhir setiap baris tanpa spasi setelahnya.
 
 ## 📁 Struktur Project

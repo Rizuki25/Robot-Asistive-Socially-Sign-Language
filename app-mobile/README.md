@@ -200,3 +200,63 @@ Contoh dengan `curl`:
 ```bash
 curl -X POST http://192.168.1.10:3001/api/sign-result -H "Content-Type: application/json" -d "{\"roomId\":\"demo-ta\",\"text\":\"Saya ingin minum\"}"
 ```
+
+## Integrasi realtime webcam model ke frontend Vercel
+
+Frontend yang sudah di-deploy tidak perlu menjalankan Vite atau tunnel frontend.
+Gunakan alur berikut:
+
+```text
+predict_webcam.py -> backend lokal :3001 -> Cloudflare Tunnel -> frontend Vercel
+```
+
+Backend menerima:
+
+- `POST /api/sign-result` untuk hasil prediksi yang sudah terkunci.
+- `POST /api/video-frame?roomId=demo-ta` dengan body JPEG untuk frame kamera.
+
+Frame dan hasil prediksi diteruskan lewat Socket.IO hanya ke perangkat yang join
+room yang sama. Halaman **Bahasa Isyarat -> Suara** menampilkan frame hasil
+anotasi model, hasil teks, tombol membacakan, dan opsi suara otomatis.
+
+### Menjalankan
+
+Terminal backend:
+
+```powershell
+cd "D:\Robot-Asistive-Socially-Sign-Language\app-mobile"
+npm.cmd run server
+```
+
+Terminal tunnel backend:
+
+```powershell
+cloudflared tunnel --url http://localhost:3001
+```
+
+Buka deployment Vercel dengan URL tunnel backend yang sudah di-encode:
+
+```text
+https://robot-asistive-socially-sign-langua.vercel.app/?socketUrl=https%3A%2F%2FURL-RANDOM.trycloudflare.com
+```
+
+Terminal model:
+
+```powershell
+cd "D:\Robot-Asistive-Socially-Sign-Language\Model"
+python -m src.letters.predict_webcam --config configs/letters_90.yaml --model_path outputs/letters_90/models/best_model.pth --motion_threshold 0.001 --pause_frames 15 --min_recording_frames 30 --prediction_interval 3 --vote_window 5 --vote_ratio 0.8 --stable_confidence 0.8 --rearm_motion_frames 3 --server_url http://localhost:3001 --room_id demo-ta --stream_fps 8 --stream_width 640 --no_speech
+```
+
+`--no_speech` menonaktifkan suara lokal dari laptop karena hasil akan dibacakan
+oleh browser. Hapus opsi tersebut jika suara lokal tetap dibutuhkan.
+
+### API key opsional
+
+Untuk membatasi endpoint pengiriman model, set nilai yang sama sebelum
+menjalankan backend dan model:
+
+```powershell
+$env:MODEL_API_KEY="ganti-dengan-kunci-rahasia"
+```
+
+Backend tetap dapat dipakai tanpa API key untuk demo lokal.

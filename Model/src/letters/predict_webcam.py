@@ -9,7 +9,14 @@ untuk visualisasi dan tidak diberikan ke model.
 """
 
 import argparse
+import json
 import os
+import queue
+import threading
+import time
+import urllib.error
+import urllib.parse
+import urllib.request
 from collections import Counter, deque
 from typing import Optional
 
@@ -182,6 +189,150 @@ class RecordedAudioPlayer:
             winsound.PlaySound(None, 0)
 
 
+class MobileAppPublisher:
+    """Publish locked predictions and throttled JPEG frames without blocking inference."""
+
+    def __init__(
+        self,
+        server_url: str,
+        room_id: str,
+        api_key: str,
+        stream_fps: float,
+        stream_width: int,
+        jpeg_quality: int,
+    ):
+        self.server_url = server_url.rstrip("/")
+        self.room_id = room_id
+        self.api_key = api_key
+        self.stream_interval = 1.0 / stream_fps
+        self.stream_width = stream_width
+        self.jpeg_quality = jpeg_quality
+        self._next_frame_time = 0.0
+        self._last_warning_time = 0.0
+        self._frame_queue = queue.Queue(maxsize=1)
+        self._result_queue = queue.Queue()
+        self._stop_event = threading.Event()
+        self._frame_thread = threading.Thread(
+            target=self._frame_worker,
+            name="mobile-frame-publisher",
+            daemon=True,
+        )
+        self._result_thread = threading.Thread(
+            target=self._result_worker,
+            name="mobile-result-publisher",
+            daemon=True,
+        )
+        self._frame_thread.start()
+        self._result_thread.start()
+        print(
+            f"[INFO] Sinkronisasi app aktif: {self.server_url} "
+            f"(room: {self.room_id}, stream: {stream_fps:g} FPS)"
+        )
+
+    def _headers(self, content_type: str) -> dict[str, str]:
+        headers = {"Content-Type": content_type}
+        if self.api_key:
+            headers["x-model-api-key"] = self.api_key
+        return headers
+
+    def _post(self, path: str, data: bytes, content_type: str) -> None:
+        request = urllib.request.Request(
+            f"{self.server_url}{path}",
+            data=data,
+            headers=self._headers(content_type),
+            method="POST",
+        )
+        with urllib.request.urlopen(request, timeout=3) as response:
+            response.read()
+
+    def _warn(self, message: str) -> None:
+        now = time.monotonic()
+        if now - self._last_warning_time >= 5:
+            print(f"[WARN] Sinkronisasi app gagal: {message}")
+            self._last_warning_time = now
+
+    def publish_frame(self, frame: np.ndarray) -> None:
+        now = time.monotonic()
+        if now < self._next_frame_time:
+            return
+        self._next_frame_time = now + self.stream_interval
+
+        height, width = frame.shape[:2]
+        if width > self.stream_width:
+            scale = self.stream_width / width
+            frame = cv2.resize(
+                frame,
+                (self.stream_width, max(1, int(height * scale))),
+                interpolation=cv2.INTER_AREA,
+            )
+
+        encoded_ok, encoded = cv2.imencode(
+            ".jpg",
+            frame,
+            [cv2.IMWRITE_JPEG_QUALITY, self.jpeg_quality],
+        )
+        if not encoded_ok:
+            self._warn("frame JPEG tidak dapat dibuat")
+            return
+
+        if self._frame_queue.full():
+            try:
+                self._frame_queue.get_nowait()
+            except queue.Empty:
+                pass
+        try:
+            self._frame_queue.put_nowait(encoded.tobytes())
+        except queue.Full:
+            pass
+
+    def publish_prediction(self, label: str, confidence: float, source: str) -> None:
+        self._result_queue.put(
+            {
+                "roomId": self.room_id,
+                "text": label,
+                "confidence": float(confidence),
+                "source": f"predict_webcam:{source}",
+            }
+        )
+
+    def _frame_worker(self) -> None:
+        query = urllib.parse.urlencode({"roomId": self.room_id})
+        path = f"/api/video-frame?{query}"
+        while not self._stop_event.is_set():
+            try:
+                frame_bytes = self._frame_queue.get(timeout=0.2)
+            except queue.Empty:
+                continue
+            try:
+                self._post(path, frame_bytes, "image/jpeg")
+            except (OSError, urllib.error.URLError) as error:
+                self._warn(str(error))
+
+    def _result_worker(self) -> None:
+        while not self._stop_event.is_set():
+            try:
+                result = self._result_queue.get(timeout=0.2)
+            except queue.Empty:
+                continue
+            try:
+                self._post(
+                    "/api/sign-result",
+                    json.dumps(result).encode("utf-8"),
+                    "application/json",
+                )
+                print(
+                    f"[SYNC] Hasil dikirim ke app: {result['text']} "
+                    f"({result['confidence'] * 100:.2f}%)"
+                )
+            except (OSError, urllib.error.URLError) as error:
+                self._warn(str(error))
+
+    def close(self) -> None:
+        self._stop_event.set()
+        self._frame_thread.join(timeout=1)
+        self._result_thread.join(timeout=1)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Prediksi huruf secara realtime dari webcam")
     parser.add_argument("--camera_index", type=int, default=0, help="Index webcam OpenCV (default: 0)")
@@ -201,6 +352,20 @@ def main() -> int:
     parser.add_argument("--audio_dir", default="assets/letters_audio", help="Folder rekaman A.wav-Z.wav (default: assets/letters_audio)")
     parser.add_argument("--no_speech", action="store_true", help="Nonaktifkan pemutaran rekaman suara")
     parser.add_argument("--mirror", action="store_true", help="Balik tampilan seperti cermin; tidak disarankan untuk input model")
+    parser.add_argument(
+        "--server_url",
+        default=os.environ.get("MODEL_SERVER_URL", ""),
+        help="URL backend app, misalnya http://localhost:3001 (default: MODEL_SERVER_URL)",
+    )
+    parser.add_argument("--room_id", default="demo-ta", help="Room tujuan app mobile (default: demo-ta)")
+    parser.add_argument(
+        "--model_api_key",
+        default=os.environ.get("MODEL_API_KEY", ""),
+        help="API key opsional yang sama dengan MODEL_API_KEY di backend",
+    )
+    parser.add_argument("--stream_fps", type=float, default=8.0, help="FPS stream ke app (default: 8)")
+    parser.add_argument("--stream_width", type=int, default=640, help="Lebar maksimum stream JPEG (default: 640)")
+    parser.add_argument("--stream_jpeg_quality", type=int, default=70, help="Kualitas JPEG 1-100 (default: 70)")
     args = parser.parse_args()
 
     positive_values = {
@@ -212,6 +377,8 @@ def main() -> int:
         "prediction_interval": args.prediction_interval,
         "vote_window": args.vote_window,
         "rearm_motion_frames": args.rearm_motion_frames,
+        "stream_fps": args.stream_fps,
+        "stream_width": args.stream_width,
     }
     invalid_positive = [name for name, value in positive_values.items() if value <= 0]
     if invalid_positive:
@@ -227,6 +394,9 @@ def main() -> int:
     ]
     if invalid_probability:
         print(f"[ERROR] {', '.join(invalid_probability)} harus berada di antara 0 dan 1")
+        return 1
+    if not 1 <= args.stream_jpeg_quality <= 100:
+        print("[ERROR] stream_jpeg_quality harus berada di antara 1 dan 100")
         return 1
     config_path = resolve_input_path(args.config)
     model_path = resolve_input_path(args.model_path)
@@ -244,6 +414,7 @@ def main() -> int:
 
     hands = pose = None
     audio_player = None
+    app_publisher = None
     try:
         with open(config_path, "r", encoding="utf-8") as file:
             config = yaml.safe_load(file)
@@ -264,6 +435,18 @@ def main() -> int:
             audio_player = RecordedAudioPlayer(args.audio_dir, class_names)
         else:
             print("[INFO] Pemutaran rekaman suara dinonaktifkan (--no_speech)")
+
+        if args.server_url:
+            app_publisher = MobileAppPublisher(
+                server_url=args.server_url,
+                room_id=args.room_id.strip() or "demo-ta",
+                api_key=args.model_api_key,
+                stream_fps=args.stream_fps,
+                stream_width=args.stream_width,
+                jpeg_quality=args.stream_jpeg_quality,
+            )
+        else:
+            print("[INFO] Sinkronisasi app nonaktif; gunakan --server_url untuk mengaktifkan")
 
         max_num_hands = config["landmark"]["max_num_hands"]
         hands = mp.solutions.hands.Hands(
@@ -306,6 +489,12 @@ def main() -> int:
             )
             if audio_player is not None:
                 audio_player.play(result_label)
+            if app_publisher is not None:
+                app_publisher.publish_prediction(
+                    result_label,
+                    result_confidence,
+                    source,
+                )
 
         print("[INFO] Webcam aktif. Hasil akan terkunci saat voting prediksi stabil.")
         print("[INFO] Setelah hasil tampil, cukup gerakkan tangan untuk membaca huruf berikutnya.")
@@ -452,6 +641,8 @@ def main() -> int:
             if scale < 1.0:
                 frame = cv2.resize(frame, (int(source_width * scale), int(source_height * scale)), interpolation=cv2.INTER_AREA)
             put_status(frame, title, detail, color)
+            if app_publisher is not None:
+                app_publisher.publish_frame(frame)
             cv2.imshow(WINDOW_NAME, frame)
             key = cv2.waitKey(1) & 0xFF
             if key in (ord("q"), 27):
@@ -463,6 +654,8 @@ def main() -> int:
         capture.release()
         if audio_player is not None:
             audio_player.close()
+        if app_publisher is not None:
+            app_publisher.close()
         if hands is not None:
             hands.close()
         if pose is not None:
