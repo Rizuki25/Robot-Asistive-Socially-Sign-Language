@@ -128,6 +128,24 @@ python -m src.letters.evaluate --model_path outputs/letters_90/models/best_model
 
 > Contoh di atas menggunakan sintaks PowerShell satu baris. Jangan menggunakan `\` sebagai penyambung baris di PowerShell; gunakan backtick (`` ` ``) atau tulis perintah dalam satu baris.
 
+#### Alternatif pipeline huruf 60 frame
+
+Untuk membuat model yang lebih ringan dan responsif saat digunakan melalui webcam,
+jalankan pipeline yang sama dengan target 60 frame. Gunakan akhiran `_60` untuk
+seluruh dataset, config, dan output agar tidak tercampur dengan pipeline 90 frame:
+
+```powershell
+python -m src.letters.normalize_letter_videos --input_dir dataset/letters/raw --output_dir dataset/letters/raw_60 --target_frames 60 --target_fps 30
+python -m src.common.extract_landmarks --input_dir dataset/letters/raw_60 --output_dir dataset/letters/landmarks_60 --max_num_hands 2
+python -m src.letters.preprocess --input_dir dataset/letters/landmarks_60 --output_dir dataset/letters/processed_60 --max_seq_length 60 --normalization wrist_relative --augment_factor 3 --test_size 0.15 --val_size 0.15 --random_seed 42
+python -m src.letters.train --config configs/letters_60.yaml
+python -m src.letters.evaluate --model_path outputs/letters_60/models/best_model.pth --config configs/letters_60.yaml
+```
+
+Pasangan file untuk inference model ini adalah `configs/letters_60.yaml` dan
+`outputs/letters_60/models/best_model.pth`. Jangan menggunakan checkpoint 60
+frame dengan config 90 frame, atau sebaliknya.
+
 ### 4. Test Prediksi Video Huruf
 
 Prediksi satu video dari dataset 90 frame menggunakan config dan checkpoint yang sesuai:
@@ -158,17 +176,66 @@ Video menampilkan landmark tangan dan skeleton tubuh tanpa titik wajah. Landmark
 
 ### 5. Test Realtime dengan Webcam
 
-Gunakan `configs/letters_90.yaml` bersama checkpoint `outputs/letters_90`. Hindari menjalankan webcam tanpa kedua opsi ini karena nilai default script masih menunjuk ke pipeline `letters` lama.
+Untuk penggunaan realtime, konfigurasi yang direkomendasikan adalah model 60
+frame: gunakan `configs/letters_60.yaml` bersama checkpoint `outputs/letters_60`.
+Model 90 frame tetap dapat digunakan untuk eksperimen, tetapi config dan checkpoint
+harus selalu berasal dari pipeline yang sama. Hindari menjalankan webcam tanpa
+kedua opsi tersebut karena nilai default script masih menunjuk ke pipeline
+`letters` lama.
 
 #### Konfigurasi realtime yang direkomendasikan
 
-Berdasarkan pengujian realtime, `motion_threshold=0.001`, minimum 30 frame, dan voting 4 dari 5 prediksi memberikan kompromi yang baik antara kecepatan respons dan kestabilan kelas A serta W:
+Sebagai konfigurasi awal realtime, model 60 frame dengan `motion_threshold=0.001`,
+minimum 45 frame, dan voting 4 dari 5 prediksi memberikan kompromi yang masuk
+akal antara kecepatan respons, jumlah padding, dan kestabilan kelas A serta W:
 
 ```powershell
-python -m src.letters.predict_webcam --config configs/letters_90.yaml --model_path outputs/letters_90/models/best_model.pth --motion_threshold 0.001 --pause_frames 15 --min_recording_frames 30 --prediction_interval 3 --vote_window 5 --vote_ratio 0.8 --stable_confidence 0.8 --rearm_motion_frames 3
+python -m src.letters.predict_webcam --config configs/letters_60.yaml --model_path outputs/letters_60/models/best_model.pth --motion_threshold 0.001 --pause_frames 15 --min_recording_frames 45 --prediction_interval 3 --vote_window 5 --vote_ratio 0.8 --stable_confidence 0.8 --rearm_motion_frames 3
 ```
 
-Saat berhasil memuat model yang digunakan pada evaluasi `letters_90`, terminal akan menampilkan checkpoint dari **epoch 37**.
+Saat berhasil memuat model yang digunakan pada evaluasi `letters_60`, terminal
+akan menampilkan checkpoint dari **epoch 21**.
+
+#### Perbedaan signifikan model 60 dan 90 frame
+
+Kedua model menggunakan arsitektur dan jumlah parameter yang sama. Perbedaannya
+adalah jumlah timestep yang dibaca BiLSTM pada setiap inference:
+
+| Aspek | 60 frame | 90 frame |
+|---|---:|---:|
+| Panjang input maksimum | 60 timestep | 90 timestep |
+| Perkiraan durasi pada 30 FPS | sekitar 2 detik | sekitar 3 detik |
+| Akurasi test offline | 97,44% | 97,86% |
+| Prediksi test benar | 228 dari 234 | 229 dari 234 |
+| Epoch checkpoint terbaik | 21 | 37 |
+| Beban pemrosesan sequence relatif | 1x | sekitar 1,5x |
+
+Model 90 unggul satu sampel pada test offline, sehingga selisih 0,42 poin
+persentase tersebut belum cukup untuk menyimpulkan bahwa model 90 selalu lebih
+baik pada webcam. Dalam penggunaan realtime, model 60 dapat terasa lebih baik
+karena lebih cepat diproses dan lebih sedikit memasukkan frame diam, getaran
+landmark, atau gerakan menurunkan tangan setelah pose selesai.
+
+`--min_recording_frames` menentukan kapan rolling prediction mulai dijalankan,
+bukan panjang maksimum input. Jika prediksi dimulai sebelum buffer mencapai
+panjang yang ditentukan config, script menambahkan padding nol. Contohnya:
+
+| Pengaturan awal prediksi | Input model 60 | Input model 90 |
+|---|---|---|
+| `--min_recording_frames 30` | 30 frame nyata + 30 padding | 30 frame nyata + 60 padding |
+| `--min_recording_frames 45` | 45 frame nyata + 15 padding | 45 frame nyata + 45 padding |
+
+Model huruf saat ini belum menggunakan masking atau packed sequence, sehingga
+padding tersebut tetap dibaca oleh LSTM. Karena itu, 45 frame direkomendasikan
+untuk model 60 sebagai kompromi antara respons cepat dan input yang lebih lengkap.
+Gunakan 30 jika latency menjadi prioritas utama dan hasilnya sudah stabil pada
+perangkat serta pengguna yang dituju.
+
+Model 90 masih berguna untuk gerakan yang lambat atau memiliki lintasan panjang,
+misalnya huruf dinamis. Sebaliknya, model 60 biasanya cukup untuk pose statis dan
+gerakan yang selesai dalam sekitar dua detik. Jika buffer lebih panjang daripada
+`max_seq_length`, preprocessing saat ini mengambil frame pertama sebanyak panjang
+config; bagian gerakan setelah frame ke-60 atau ke-90 tidak ikut diprediksi.
 
 #### Rekam suara sendiri untuk hasil prediksi
 
@@ -222,19 +289,19 @@ python -m src.letters.record_letter_audio --overwrite
 Ketika hasil voting atau fallback terkunci, file WAV sesuai huruf diputar tepat satu kali secara asynchronous sehingga webcam tetap responsif. Gunakan folder rekaman default atau tentukan folder lain:
 
 ```powershell
-python -m src.letters.predict_webcam --config configs/letters_90.yaml --model_path outputs/letters_90/models/best_model.pth --motion_threshold 0.001 --pause_frames 15 --audio_dir assets/letters_audio
+python -m src.letters.predict_webcam --config configs/letters_60.yaml --model_path outputs/letters_60/models/best_model.pth --motion_threshold 0.001 --pause_frames 15 --min_recording_frames 45 --audio_dir assets/letters_audio
 ```
 
 Jika file suatu huruf belum tersedia, terminal menampilkan warning dan prediksi tetap berjalan. Nonaktifkan seluruh audio dengan:
 
 ```powershell
-python -m src.letters.predict_webcam --config configs/letters_90.yaml --model_path outputs/letters_90/models/best_model.pth --motion_threshold 0.001 --pause_frames 15 --no_speech
+python -m src.letters.predict_webcam --config configs/letters_60.yaml --model_path outputs/letters_60/models/best_model.pth --motion_threshold 0.001 --pause_frames 15 --min_recording_frames 45 --no_speech
 ```
 
 Alur inference berjalan otomatis dan berulang:
 
 1. `WAITING` — menunggu tangan mulai bergerak.
-2. `RECORDING` — mengumpulkan minimal 30 frame, lalu menjalankan prediksi berkala setiap tiga frame.
+2. `RECORDING` — mengumpulkan minimal 45 frame, lalu menjalankan prediksi berkala setiap tiga frame.
 3. Lima prediksi terbaru masuk ke voting. Hasil langsung dikunci jika sedikitnya empat vote sama dan rata-rata confidence kelas pemenang minimal 80%.
 4. Jika voting belum stabil, `pause_frames` tetap digunakan sebagai fallback setelah tangan diam.
 5. `RESULT` — hasil dan confidence ditampilkan tanpa pengguna harus menurunkan tangan.
@@ -245,13 +312,13 @@ Alur inference berjalan otomatis dan berulang:
 Pilih kamera, perkecil window, dan atur durasi tampilan hasil:
 
 ```powershell
-python -m src.letters.predict_webcam --config configs/letters_90.yaml --model_path outputs/letters_90/models/best_model.pth --camera_index 0 --display_width 640 --motion_threshold 0.001 --pause_frames 15 --result_frames 45
+python -m src.letters.predict_webcam --config configs/letters_60.yaml --model_path outputs/letters_60/models/best_model.pth --camera_index 0 --display_width 640 --motion_threshold 0.001 --pause_frames 15 --min_recording_frames 45 --result_frames 45
 ```
 
 Tampilkan hasil hanya jika confidence mencapai minimal 70%:
 
 ```powershell
-python -m src.letters.predict_webcam --config configs/letters_90.yaml --model_path outputs/letters_90/models/best_model.pth --motion_threshold 0.001 --pause_frames 15 --min_confidence 0.70
+python -m src.letters.predict_webcam --config configs/letters_60.yaml --model_path outputs/letters_60/models/best_model.pth --motion_threshold 0.001 --pause_frames 15 --min_recording_frames 45 --min_confidence 0.70
 ```
 
 Parameter penting:
@@ -261,7 +328,7 @@ Parameter penting:
 | `--camera_index` | `0` | Indeks kamera OpenCV |
 | `--motion_threshold` | `0.001` | Ambang perpindahan landmark yang dianggap gerakan |
 | `--pause_frames` | `15` | Frame diam sebelum fallback prediksi dijalankan |
-| `--min_recording_frames` | `30` | Sequence minimum sebelum rolling prediction; menjaga A/W dari prediksi terlalu dini |
+| `--min_recording_frames` | `45` | Sequence minimum model 60 sebelum rolling prediction; mengurangi padding dan prediksi terlalu dini |
 | `--prediction_interval` | `3` | Jarak frame antar-inferensi selama recording |
 | `--vote_window` | `5` | Jumlah prediksi terbaru yang ikut voting |
 | `--vote_ratio` | `0.8` | Proporsi vote kelas pemenang untuk mengunci hasil |
@@ -273,7 +340,13 @@ Parameter penting:
 | `--audio_dir` | `assets/letters_audio` | Folder rekaman suara `A.wav`–`Z.wav` |
 | `--no_speech` | nonaktif | Jalankan prediksi tanpa memutar rekaman suara |
 
-`pause_frames` sekarang berfungsi sebagai fallback jika voting belum stabil. Jangan menurunkan `min_recording_frames` di bawah 30 tanpa menguji ulang A dan W, karena kedua kelas tersebut sebelumnya salah pada sequence pendek. Jika ingin hasil terkunci lebih cepat, parameter yang lebih aman untuk disesuaikan adalah `prediction_interval`, `vote_window`, atau `vote_ratio`, tetapi nilai yang terlalu longgar dapat membuat prediksi berkedip atau salah terkunci.
+`pause_frames` sekarang berfungsi sebagai fallback jika voting belum stabil. Untuk
+model 60, nilai 45 direkomendasikan agar prediksi tidak dimulai terlalu dini.
+Nilai 30 dapat digunakan untuk respons lebih cepat, tetapi harus diuji ulang pada
+A, W, dan huruf dinamis karena input awal mengandung lebih banyak padding. Jika
+ingin hasil terkunci lebih cepat, parameter lain yang dapat diuji adalah
+`prediction_interval`, `vote_window`, atau `vote_ratio`; nilai yang terlalu longgar
+dapat membuat prediksi berkedip atau salah terkunci.
 
 Lakukan gerakan secara jelas dan tahan pose akhir. Ketika vote sudah stabil, hasil akan muncul meskipun tangan masih diangkat. Setelah hasil selesai ditampilkan, langsung gerakkan tangan ke pose baru tanpa perlu menurunkannya. Tekan **Q** atau **Esc** untuk keluar.
 
@@ -285,7 +358,7 @@ Jalankan backend `app-mobile` pada port `3001`, lalu tambahkan opsi berikut ke
 perintah webcam:
 
 ```powershell
-python -m src.letters.predict_webcam --config configs/letters_90.yaml --model_path outputs/letters_90/models/best_model.pth --motion_threshold 0.001 --pause_frames 15 --min_recording_frames 30 --prediction_interval 3 --vote_window 5 --vote_ratio 0.8 --stable_confidence 0.8 --rearm_motion_frames 3 --server_url http://localhost:3001 --room_id demo-ta --no_speech
+python -m src.letters.predict_webcam --config configs/letters_60.yaml --model_path outputs/letters_60/models/best_model.pth --motion_threshold 0.001 --pause_frames 15 --min_recording_frames 45 --prediction_interval 3 --vote_window 5 --vote_ratio 0.8 --stable_confidence 0.8 --rearm_motion_frames 3 --server_url http://localhost:3001 --room_id demo-ta --no_speech
 ```
 
 Model akan:
@@ -310,8 +383,13 @@ Opsi integrasi:
 
 ## 📁 Struktur Project
 
+- `configs/letters_60.yaml` — konfigurasi pipeline huruf 60 frame yang direkomendasikan untuk realtime
 - `configs/letters_90.yaml` — konfigurasi pipeline huruf 90 frame
 - `dataset/letters/raw/` — video sumber per kelas
+- `dataset/letters/raw_60/` — video hasil normalisasi 60 frame/30 FPS
+- `dataset/letters/landmarks_60/` — hasil ekstraksi landmark 60 frame `.npy`
+- `dataset/letters/processed_60/` — tensor train/val/test model 60 dan label encoder
+- `outputs/letters_60/` — checkpoint, log, figures, dan hasil evaluasi model 60
 - `dataset/letters/raw_90/` — video hasil normalisasi 90 frame/30 FPS
 - `dataset/letters/landmarks_90/` — hasil ekstraksi landmark `.npy`
 - `dataset/letters/processed_90/` — tensor train/val/test dan label encoder
@@ -325,7 +403,9 @@ Opsi integrasi:
 - `src/letters/` — normalisasi, preprocessing, model, training, evaluasi, dan inference huruf
 - `src/common/` — ekstraksi landmark dan utilitas bersama
 
-Folder tanpa akhiran `_90` merupakan pipeline/dataset sebelumnya. Pastikan config, processed data, checkpoint, dan perintah inference selalu berasal dari pipeline yang sama.
+Folder tanpa akhiran `_60` atau `_90` merupakan pipeline/dataset sebelumnya.
+Pastikan config, processed data, checkpoint, dan perintah inference selalu berasal
+dari pipeline yang sama.
 
 Lihat [WORKFLOW.md](WORKFLOW.md) untuk dokumentasi lengkap setiap tahap dan opsi prediksi video.
 
