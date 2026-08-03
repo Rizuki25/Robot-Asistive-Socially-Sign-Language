@@ -1,7 +1,7 @@
-"""Normalisasi video dataset kata menjadi jumlah frame dan FPS yang seragam.
+"""Normalisasi selektif video dataset kata ke 90 frame pada 30 FPS.
 
-Program tidak pernah menimpa video sumber. Struktur folder kelas dipertahankan
-di folder output baru. Audio tidak disalin karena tidak digunakan oleh model.
+Video yang sudah tepat 90 frame/30 FPS disalin tanpa re-encode. Hanya video
+yang berbeda yang di-resampling. Dataset sumber tidak pernah ditimpa.
 
 Jalankan dari folder ``Model``:
 
@@ -11,6 +11,7 @@ Jalankan dari folder ``Model``:
 import argparse
 import csv
 import os
+import shutil
 from pathlib import Path
 
 import cv2
@@ -18,11 +19,11 @@ import numpy as np
 
 
 MODEL_ROOT = Path(__file__).resolve().parents[2]
-VIDEO_EXTENSIONS = {".mp4", ".avi", ".mov", ".mkv", ".wmv"}
+VIDEO_EXTENSIONS = {".avi", ".mp4", ".mov", ".mkv", ".wmv"}
+FPS_TOLERANCE = 0.1
 
 
 def resolve_path(path_value: str) -> Path:
-    """Resolve path absolut atau path relatif terhadap folder Model."""
     path = Path(path_value).expanduser()
     if not path.is_absolute():
         path = MODEL_ROOT / path
@@ -30,12 +31,12 @@ def resolve_path(path_value: str) -> Path:
 
 
 def inspect_video(video_path: Path) -> tuple[int, float]:
-    """Dekode video untuk memperoleh jumlah frame aktual dan FPS metadata."""
+    """Dekode seluruh video untuk menghitung frame aktual."""
     capture = cv2.VideoCapture(str(video_path))
     if not capture.isOpened():
         raise RuntimeError("video tidak dapat dibuka")
 
-    source_fps = float(capture.get(cv2.CAP_PROP_FPS))
+    stored_fps = float(capture.get(cv2.CAP_PROP_FPS))
     decoded_frames = 0
     while True:
         success, _ = capture.read()
@@ -46,48 +47,78 @@ def inspect_video(video_path: Path) -> tuple[int, float]:
 
     if decoded_frames == 0:
         raise RuntimeError("video tidak memiliki frame yang dapat didekode")
-    return decoded_frames, source_fps
+    return decoded_frames, stored_fps
 
 
-def build_frame_indices(source_frames: int, target_frames: int) -> np.ndarray:
-    """Pilih frame secara merata dari seluruh durasi video."""
-    return np.rint(
-        np.linspace(0, source_frames - 1, target_frames)
-    ).astype(np.int64)
-
-
-def verify_output(
+def verify_video(
     video_path: Path,
     target_frames: int,
     target_fps: float,
 ) -> tuple[int, float]:
-    """Pastikan output dapat didekode dan memiliki frame/FPS yang diminta."""
     decoded_frames, stored_fps = inspect_video(video_path)
     if decoded_frames != target_frames:
         raise RuntimeError(
             f"hasil berisi {decoded_frames} frame; target {target_frames}"
         )
-    if abs(stored_fps - target_fps) > 0.1:
+    if abs(stored_fps - target_fps) > FPS_TOLERANCE:
         raise RuntimeError(
-            f"hasil tersimpan pada {stored_fps:.3f} FPS; target {target_fps:.3f}"
+            f"hasil memiliki {stored_fps:.3f} FPS; target {target_fps:.3f}"
         )
     return decoded_frames, stored_fps
+
+
+def temporary_path_for(output_path: Path) -> Path:
+    return output_path.with_name(f"{output_path.stem}.tmp{output_path.suffix}")
+
+
+def copy_consistent_video(
+    source_path: Path,
+    output_path: Path,
+    target_frames: int,
+    target_fps: float,
+) -> tuple[int, float]:
+    """Salin video konsisten tanpa mengubah data encoded-nya."""
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    temporary_path = temporary_path_for(output_path)
+    if temporary_path.exists():
+        temporary_path.unlink()
+
+    shutil.copy2(source_path, temporary_path)
+    try:
+        output_frames, output_fps = verify_video(
+            temporary_path,
+            target_frames,
+            target_fps,
+        )
+    except Exception:
+        if temporary_path.exists():
+            temporary_path.unlink()
+        raise
+
+    os.replace(temporary_path, output_path)
+    return output_frames, output_fps
+
+
+def video_fourcc(output_path: Path) -> int:
+    if output_path.suffix.lower() == ".avi":
+        return cv2.VideoWriter_fourcc(*"XVID")
+    return cv2.VideoWriter_fourcc(*"mp4v")
 
 
 def normalize_video(
     source_path: Path,
     output_path: Path,
+    source_frames: int,
     target_frames: int,
     target_fps: float,
-) -> dict:
-    """Normalisasi satu video dengan nearest-frame temporal resampling."""
-    source_frames, source_fps = inspect_video(source_path)
-    selected_indices = build_frame_indices(source_frames, target_frames)
+) -> tuple[int, float]:
+    """Resampling frame terdekat secara merata dari awal hingga akhir."""
+    selected_indices = np.rint(
+        np.linspace(0, source_frames - 1, target_frames)
+    ).astype(np.int64)
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    temporary_path = output_path.with_name(
-        f"{output_path.stem}.tmp{output_path.suffix}"
-    )
+    temporary_path = temporary_path_for(output_path)
     if temporary_path.exists():
         temporary_path.unlink()
 
@@ -101,10 +132,9 @@ def normalize_video(
         raise RuntimeError("frame pertama tidak dapat dibaca")
 
     height, width = frame.shape[:2]
-    fourcc = cv2.VideoWriter_fourcc(*"mp4v")
     writer = cv2.VideoWriter(
         str(temporary_path),
-        fourcc,
+        video_fourcc(output_path),
         target_fps,
         (width, height),
     )
@@ -112,7 +142,7 @@ def normalize_video(
         capture.release()
         if temporary_path.exists():
             temporary_path.unlink()
-        raise RuntimeError("VideoWriter MP4 tidak dapat dibuat")
+        raise RuntimeError("VideoWriter tidak dapat dibuat")
 
     source_index = 0
     target_index = 0
@@ -144,7 +174,7 @@ def normalize_video(
         )
 
     try:
-        output_frames, output_fps = verify_output(
+        output_frames, output_fps = verify_video(
             temporary_path,
             target_frames,
             target_fps,
@@ -156,26 +186,10 @@ def normalize_video(
 
     os.replace(temporary_path, output_path)
 
-    if source_frames < target_frames:
-        action = "upsample"
-    elif source_frames > target_frames:
-        action = "downsample"
-    else:
-        action = "rewrite_fps"
-
-    return {
-        "status": "success",
-        "action": action,
-        "source_frames": source_frames,
-        "source_fps": round(source_fps, 3),
-        "output_frames": output_frames,
-        "output_fps": round(output_fps, 3),
-        "error": "",
-    }
+    return output_frames, output_fps
 
 
 def write_report(rows: list[dict], output_root: Path) -> Path:
-    """Tulis laporan setiap video secara atomik."""
     report_path = output_root / "normalization_report.csv"
     temporary_path = output_root / "normalization_report.tmp.csv"
     fieldnames = [
@@ -201,12 +215,14 @@ def write_report(rows: list[dict], output_root: Path) -> Path:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Normalisasi video dataset kata menjadi tepat 90 frame @ 30 FPS"
+        description=(
+            "Normalisasi selektif dataset kata menjadi 90 frame @ 30 FPS"
+        )
     )
     parser.add_argument(
         "--input_dir",
         default="dataset/words/raw",
-        help="Folder video sumber per kelas (default: dataset/words/raw)",
+        help="Folder sumber per kelas (default: dataset/words/raw)",
     )
     parser.add_argument(
         "--output_dir",
@@ -217,13 +233,13 @@ def parse_args() -> argparse.Namespace:
         "--target_frames",
         type=int,
         default=90,
-        help="Jumlah frame output setiap video (default: 90)",
+        help="Jumlah frame target (default: 90)",
     )
     parser.add_argument(
         "--target_fps",
         type=float,
         default=30.0,
-        help="FPS output setiap video (default: 30)",
+        help="FPS target (default: 30)",
     )
     return parser.parse_args()
 
@@ -251,12 +267,13 @@ def main() -> None:
 
     output_root.mkdir(parents=True, exist_ok=True)
     report_rows = []
-    success_count = 0
+    copied_count = 0
+    normalized_count = 0
     skipped_count = 0
     failed_count = 0
 
     print("=" * 60)
-    print("NORMALISASI VIDEO DATASET KATA")
+    print("NORMALISASI SELEKTIF VIDEO DATASET KATA")
     print(f"Input         : {input_root}")
     print(f"Output baru   : {output_root}")
     print(f"Target        : {args.target_frames} frame @ {args.target_fps:g} FPS")
@@ -272,7 +289,7 @@ def main() -> None:
         print(f"\n[{class_dir.name}] {len(video_files)} video")
 
         for source_path in video_files:
-            output_path = output_root / class_dir.name / f"{source_path.stem}.mp4"
+            output_path = output_root / class_dir.name / source_path.name
             base_row = {
                 "class": class_dir.name,
                 "source": str(source_path),
@@ -297,17 +314,52 @@ def main() -> None:
                 continue
 
             try:
-                result = normalize_video(
-                    source_path,
-                    output_path,
-                    args.target_frames,
-                    args.target_fps,
+                source_frames, source_fps = inspect_video(source_path)
+                is_consistent = (
+                    source_frames == args.target_frames
+                    and abs(source_fps - args.target_fps) <= FPS_TOLERANCE
                 )
-                success_count += 1
-                report_rows.append({**base_row, **result})
+
+                if is_consistent:
+                    output_frames, output_fps = copy_consistent_video(
+                        source_path,
+                        output_path,
+                        args.target_frames,
+                        args.target_fps,
+                    )
+                    action = "copied_unchanged"
+                    copied_count += 1
+                else:
+                    output_frames, output_fps = normalize_video(
+                        source_path,
+                        output_path,
+                        source_frames,
+                        args.target_frames,
+                        args.target_fps,
+                    )
+                    if source_frames < args.target_frames:
+                        action = "upsample"
+                    elif source_frames > args.target_frames:
+                        action = "downsample"
+                    else:
+                        action = "rewrite_fps"
+                    normalized_count += 1
+
+                report_rows.append(
+                    {
+                        **base_row,
+                        "status": "success",
+                        "action": action,
+                        "source_frames": source_frames,
+                        "source_fps": round(source_fps, 3),
+                        "output_frames": output_frames,
+                        "output_fps": round(output_fps, 3),
+                        "error": "",
+                    }
+                )
                 print(
-                    f"  [OK] {source_path.name}: "
-                    f"{result['source_frames']} -> {result['output_frames']} frame"
+                    f"  [OK] {source_path.name}: {action} | "
+                    f"{source_frames} -> {output_frames} frame"
                 )
             except Exception as error:
                 failed_count += 1
@@ -328,10 +380,11 @@ def main() -> None:
     report_path = write_report(report_rows, output_root)
     print("\n" + "=" * 60)
     print("SELESAI")
-    print(f"Berhasil : {success_count}")
-    print(f"Dilewati : {skipped_count}")
-    print(f"Gagal    : {failed_count}")
-    print(f"Laporan  : {report_path}")
+    print(f"Disalin tanpa perubahan : {copied_count}")
+    print(f"Dinormalisasi           : {normalized_count}")
+    print(f"Dilewati                : {skipped_count}")
+    print(f"Gagal                    : {failed_count}")
+    print(f"Laporan                  : {report_path}")
     print("=" * 60)
 
     if failed_count:
