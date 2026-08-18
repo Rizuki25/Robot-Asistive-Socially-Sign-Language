@@ -1,6 +1,6 @@
-"""Normalisasi selektif video dataset kata ke 90 frame pada 30 FPS.
+"""Normalisasi selektif video dataset kata ke 60 frame pada 30 FPS.
 
-Video yang sudah tepat 90 frame/30 FPS disalin tanpa re-encode. Hanya video
+Video yang sudah tepat 60 frame/30 FPS disalin tanpa re-encode. Hanya video
 yang berbeda yang di-resampling. Dataset sumber tidak pernah ditimpa.
 
 Jalankan dari folder ``Model``:
@@ -216,7 +216,7 @@ def write_report(rows: list[dict], output_root: Path) -> Path:
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description=(
-            "Normalisasi selektif dataset kata menjadi 90 frame @ 30 FPS"
+            "Normalisasi selektif dataset kata menjadi 60 frame @ 30 FPS"
         )
     )
     parser.add_argument(
@@ -226,14 +226,14 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--output_dir",
-        default="dataset/words/raw_90",
-        help="Folder output baru (default: dataset/words/raw_90)",
+        default="dataset/words/raw_60",
+        help="Folder output baru (default: dataset/words/raw_60)",
     )
     parser.add_argument(
         "--target_frames",
         type=int,
-        default=90,
-        help="Jumlah frame target (default: 90)",
+        default=60,
+        help="Jumlah frame target (default: 60)",
     )
     parser.add_argument(
         "--target_fps",

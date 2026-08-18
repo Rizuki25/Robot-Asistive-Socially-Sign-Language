@@ -1,0 +1,49 @@
+# Pipeline motion-aware khusus kata untuk video 60 frame pada 30 FPS.
+# Tidak digunakan oleh pipeline huruf.
+paths:
+  raw_dataset: "dataset/words/raw_60"
+  landmarks: "dataset/words/landmarks_60"
+  processed: "dataset/words/processed_motion_60"
+  models: "outputs/words_motion_60/models"
+  logs: "outputs/words_motion_60/logs"
+  figures: "outputs/words_motion_60/figures"
+  results: "outputs/words_motion_60/results"
+
+landmark:
+  max_num_hands: 2
+
+preprocessing:
+  # Video 2 detik pada 30 FPS menghasilkan sequence sepanjang 60 frame.
+  max_seq_length: 60
+  augment_factor: 0
+  test_size: 0.15
+  val_size: 0.15
+  random_seed: 42
+
+features:
+  pipeline: "words_motion_v1"
+  local_hand_shape: true
+  global_wrist_position: true
+  wrist_displacement: true
+  hand_presence_mask: true
+
+model:
+  input_size: 140
+  hidden_size: 128
+  num_layers: 2
+  dropout: 0.3
+  bidirectional: true
+  use_packed_sequence: true
+
+training:
+  batch_size: 16
+  epochs: 150
+  learning_rate: 0.001
+  weight_decay: 0.0001
+  patience: 20
+  gradient_clip: 1.0
+  scheduler:
+    type: "ReduceLROnPlateau"
+    factor: 0.5
+    patience: 7
+  random_seed: 42

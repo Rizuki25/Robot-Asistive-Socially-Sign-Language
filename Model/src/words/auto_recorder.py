@@ -1,7 +1,8 @@
 """Perekam otomatis video dataset kata dengan kamera.
 
-Setiap video direkam dengan jumlah frame tetap, diverifikasi, lalu disimpan ke
-``dataset/words/raw/{kelas}/``. Jalankan dari folder ``Model``:
+Secara default, setiap video direkam sebanyak 90 frame pada 30 FPS sehingga
+durasi video output tepat 3 detik. Video diverifikasi, lalu disimpan ke
+``D:\\dataset\\Kata\\{kelas}\\``. Jalankan dari folder ``Model``:
 
     python -m src.words.auto_recorder
 
@@ -21,7 +22,7 @@ import cv2
 
 
 MODEL_ROOT = Path(__file__).resolve().parents[2]
-DEFAULT_DATASET_ROOT = MODEL_ROOT / "dataset" / "words" / "raw"
+DEFAULT_DATASET_ROOT = Path(r"D:\dataset\Kata")
 DEFAULT_TARGET_FPS = 30.0
 DEFAULT_TARGET_FRAMES = 90
 DEFAULT_MIN_CAPTURE_FPS = 27.0
@@ -279,7 +280,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--dataset_dir",
         default=str(DEFAULT_DATASET_ROOT),
-        help="Folder dataset raw kata (default: dataset/words/raw)",
+        help=r"Folder dataset raw kata (default: D:\dataset\Kata)",
     )
     parser.add_argument(
         "--label",
@@ -375,6 +376,7 @@ def main() -> None:
     print(f"Dataset : {dataset_root}")
     print(f"Kelas   : {current_label}")
     print(f"Target  : {args.target_frames} frame @ {args.target_fps:g} FPS")
+    print(f"Durasi  : {args.target_frames / args.target_fps:g} detik")
     print("=" * 60)
 
     if args.camera_index is not None:
