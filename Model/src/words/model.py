@@ -1,8 +1,8 @@
-"""Packed BiLSTM khusus kata; padding tidak ikut membentuk representasi."""
+"""Packed BiLSTM khusus kata dengan Temporal Pooling untuk menangkap dinamika gerakan."""
 
 import torch
 import torch.nn as nn
-from torch.nn.utils.rnn import pack_padded_sequence
+from torch.nn.utils.rnn import pack_padded_sequence, pad_packed_sequence
 
 
 class WordMotionBiLSTM(nn.Module):
@@ -37,16 +37,20 @@ class WordMotionBiLSTM(nn.Module):
             batch_first=True,
             enforce_sorted=False,
         )
-        _, (hidden, _) = self.lstm(packed)
+        out_packed, _ = self.lstm(packed)
+        out, _ = pad_packed_sequence(out_packed, batch_first=True)
 
-        # Layer terakhir: forward berada di -2, backward berada di -1.
-        representation = torch.cat((hidden[-2], hidden[-1]), dim=1)
-        return self.classifier(self.dropout(representation))
+        # Temporal Mean Pooling: merata-ratakan output di sepanjang sequence frame valid
+        device = inputs.device
+        mask = (safe_lengths.to(device).unsqueeze(1) > torch.arange(out.size(1), device=device).unsqueeze(0)).unsqueeze(2).float()
+        pooled = (out * mask).sum(dim=1) / safe_lengths.to(device).unsqueeze(1).clamp(min=1).float()
+
+        return self.classifier(self.dropout(pooled))
 
     def summary(self):
         total = sum(parameter.numel() for parameter in self.parameters())
         return (
-            "Word Motion BiLSTM\n"
+            "Word Motion BiLSTM (Temporal Pooled)\n"
             f"  Input size : {self.input_size}\n"
             f"  Hidden     : {self.hidden_size}\n"
             f"  Layers     : {self.num_layers}\n"
