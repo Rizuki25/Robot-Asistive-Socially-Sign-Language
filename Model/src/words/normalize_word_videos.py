@@ -1,7 +1,9 @@
-"""Normalisasi selektif video dataset kata ke 60 frame pada 30 FPS.
+"""Perpanjang video dataset kata menjadi 90 frame pada 30 FPS.
 
-Video yang sudah tepat 60 frame/30 FPS disalin tanpa re-encode. Hanya video
-yang berbeda yang di-resampling. Dataset sumber tidak pernah ditimpa.
+Secara default, frame tambahan dibuat dengan menahan pose awal dan pose akhir.
+Contohnya, video 60 frame akan menjadi: 15 frame pose awal + 60 frame asli +
+15 frame pose akhir. Gerakan asli tidak diperlambat dan dataset sumber tidak
+pernah ditimpa.
 
 Jalankan dari folder ``Model``:
 
@@ -111,11 +113,25 @@ def normalize_video(
     source_frames: int,
     target_frames: int,
     target_fps: float,
+    padding_mode: str,
+    start_padding_ratio: float,
 ) -> tuple[int, float]:
-    """Resampling frame terdekat secara merata dari awal hingga akhir."""
-    selected_indices = np.rint(
-        np.linspace(0, source_frames - 1, target_frames)
-    ).astype(np.int64)
+    """Buat indeks output dengan padding pose atau resampling merata."""
+    if source_frames < target_frames and padding_mode == "freeze_edges":
+        extra_frames = target_frames - source_frames
+        start_padding = int(round(extra_frames * start_padding_ratio))
+        end_padding = extra_frames - start_padding
+        selected_indices = np.concatenate(
+            (
+                np.zeros(start_padding, dtype=np.int64),
+                np.arange(source_frames, dtype=np.int64),
+                np.full(end_padding, source_frames - 1, dtype=np.int64),
+            )
+        )
+    else:
+        selected_indices = np.rint(
+            np.linspace(0, source_frames - 1, target_frames)
+        ).astype(np.int64)
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
     temporary_path = temporary_path_for(output_path)
@@ -216,7 +232,7 @@ def write_report(rows: list[dict], output_root: Path) -> Path:
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description=(
-            "Normalisasi selektif dataset kata menjadi 60 frame @ 30 FPS"
+            "Perpanjang dataset kata menjadi 90 frame @ 30 FPS"
         )
     )
     parser.add_argument(
@@ -226,20 +242,38 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--output_dir",
-        default="dataset/words/raw_60",
-        help="Folder output baru (default: dataset/words/raw_60)",
+        default="dataset/words/raw_90",
+        help="Folder output baru (default: dataset/words/raw_90)",
     )
     parser.add_argument(
         "--target_frames",
         type=int,
-        default=60,
-        help="Jumlah frame target (default: 60)",
+        default=90,
+        help="Jumlah frame target (default: 90)",
     )
     parser.add_argument(
         "--target_fps",
         type=float,
         default=30.0,
         help="FPS target (default: 30)",
+    )
+    parser.add_argument(
+        "--padding_mode",
+        choices=("freeze_edges", "stretch"),
+        default="freeze_edges",
+        help=(
+            "Cara menambah frame: tahan pose awal/akhir (freeze_edges, "
+            "default) atau perlambat seluruh video (stretch)"
+        ),
+    )
+    parser.add_argument(
+        "--start_padding_ratio",
+        type=float,
+        default=0.5,
+        help=(
+            "Bagian frame tambahan yang ditempatkan di awal, 0 sampai 1 "
+            "(default: 0.5; sisa ditempatkan di akhir)"
+        ),
     )
     return parser.parse_args()
 
@@ -253,6 +287,10 @@ def main() -> None:
         raise SystemExit("[ERROR] --target_frames harus lebih dari 0")
     if args.target_fps <= 0:
         raise SystemExit("[ERROR] --target_fps harus lebih dari 0")
+    if not 0.0 <= args.start_padding_ratio <= 1.0:
+        raise SystemExit(
+            "[ERROR] --start_padding_ratio harus berada antara 0 dan 1"
+        )
     if not input_root.is_dir():
         raise SystemExit(f"[ERROR] Folder input tidak ditemukan: {input_root}")
     if output_root == input_root or input_root in output_root.parents:
@@ -273,10 +311,16 @@ def main() -> None:
     failed_count = 0
 
     print("=" * 60)
-    print("NORMALISASI SELEKTIF VIDEO DATASET KATA")
+    print("PERPANJANG VIDEO DATASET KATA")
     print(f"Input         : {input_root}")
     print(f"Output baru   : {output_root}")
     print(f"Target        : {args.target_frames} frame @ {args.target_fps:g} FPS")
+    print(f"Mode padding  : {args.padding_mode}")
+    if args.padding_mode == "freeze_edges":
+        print(
+            f"Padding awal  : {args.start_padding_ratio * 100:g}% dari "
+            "total frame tambahan"
+        )
     print("Video sumber  : tidak akan ditimpa")
     print("=" * 60)
 
@@ -336,9 +380,15 @@ def main() -> None:
                         source_frames,
                         args.target_frames,
                         args.target_fps,
+                        args.padding_mode,
+                        args.start_padding_ratio,
                     )
                     if source_frames < args.target_frames:
-                        action = "upsample"
+                        action = (
+                            "freeze_edges"
+                            if args.padding_mode == "freeze_edges"
+                            else "stretch"
+                        )
                     elif source_frames > args.target_frames:
                         action = "downsample"
                     else:

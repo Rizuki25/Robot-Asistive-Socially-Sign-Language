@@ -14,6 +14,18 @@ python -m src.words.normalize_word_videos
 
 Setiap output didekode ulang dan wajib memiliki tepat 90 frame pada 30 FPS.
 Rincian hasil tersedia di `dataset/words/raw_90/normalization_report.csv`.
+Untuk sumber 60 frame, mode default tidak memperlambat gerakan: program menahan
+frame pertama selama 15 frame tambahan, mempertahankan seluruh 60 frame asli,
+lalu menahan frame terakhir selama 15 frame tambahan. Dengan demikian output
+berdurasi 3 detik dan pose diam tersedia di kedua sisi gerakan. Bagian gerakan
+yang tidak pernah terekam tidak dapat dipulihkan oleh proses ini.
+
+Pembagian padding dapat diubah. Contoh 10 frame tambahan di awal dan 20 di
+akhir (rasio awal `10 / 30 = 0.3333`):
+
+```powershell
+python -m src.words.normalize_word_videos --start_padding_ratio 0.3333
+```
 
 ## Fitur per frame
 
