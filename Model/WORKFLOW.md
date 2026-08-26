@@ -317,6 +317,14 @@ Model/
 │       ├── evaluate.py
 │       ├── predict_video.py
 │       └── predict_webcam.py
+│   └── combined/                # Pipeline gabungan 36 kelas (26 huruf + 10 kata)
+│       ├── preprocess.py
+│       ├── dataset_loader.py
+│       ├── model.py
+│       ├── train.py
+│       ├── evaluate.py
+│       ├── predict_video.py
+│       └── predict_webcam.py
 ├── notebooks/
 │   └── exploration.ipynb        # Notebook eksplorasi & visualisasi
 │
