@@ -296,6 +296,7 @@ Model/
 │   ├── __init__.py
 │   ├── common/
 │   │   ├── extract_landmarks.py # Ekstraksi MediaPipe untuk huruf dan kata
+│   │   ├── predict_webcam_auto.py # Realtime auto-detector (Huruf & Kata sekaligus)
 │   │   └── utils.py             # Fungsi utilitas bersama
 │   ├── letters/
 │   │   ├── auto_recorder.py     # Perekam dataset huruf
