@@ -314,8 +314,8 @@ Model/
 │       ├── dataset_loader.py
 │       ├── train.py
 │       ├── evaluate.py
-│       └── predict_video.py
-│
+│       ├── predict_video.py
+│       └── predict_webcam.py
 ├── notebooks/
 │   └── exploration.ipynb        # Notebook eksplorasi & visualisasi
 │
