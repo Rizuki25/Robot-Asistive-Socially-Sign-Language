@@ -100,8 +100,18 @@ def predict_sequence(
     model: CombinedBiLSTM,
     device: torch.device,
 ) -> Tuple[str, float]:
+    max_seq_length = int(config["preprocessing"]["max_seq_length"])
+    if len(landmarks) > max_seq_length:
+        # Jangan membuang bagian akhir gerakan. Dataset 90-frame dibuat dengan
+        # sampling merata; inferensi sequence panjang harus mengikuti cara yang
+        # sama agar seluruh gerakan (awal sampai akhir) tetap terwakili.
+        sample_indices = np.rint(
+            np.linspace(0, len(landmarks) - 1, max_seq_length)
+        ).astype(np.int64)
+        landmarks = landmarks[sample_indices]
+
     features = extract_combined_features(landmarks)
-    data, lengths = pad_features([features], config["preprocessing"]["max_seq_length"])
+    data, lengths = pad_features([features], max_seq_length)
     inputs = torch.from_numpy(data).to(device)
     lengths_t = torch.from_numpy(lengths).to(device)
     model.eval()
@@ -164,4 +174,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

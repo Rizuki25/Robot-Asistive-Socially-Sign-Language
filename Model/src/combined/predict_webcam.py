@@ -1,5 +1,11 @@
 """
 Realtime inference webcam menggunakan model gabungan 36 kelas (Huruf & Kata).
+=============================================================================
+Arsitektur State Machine Terpadu (Sama dengan pipeline huruf & kata yang stabil):
+- Tangan/jari diam di layar TIDAK akan memicu prediksi baru secara liar.
+- Setelah hasil terkunci (RESULT), pengguna TIDAK PERLU menurunkan tangan ke bawah.
+- Cukup tahan sejenak (jeda diam), lalu langsung lakukan gerakan/isyarat berikutnya.
+- Jendela compact 4:3 (640x480) dengan overlay status ramping.
 
 Jalankan dari folder Model/:
     python -m src.combined.predict_webcam --config configs/combined_90.yaml
@@ -8,11 +14,7 @@ Jalankan dari folder Model/:
 import argparse
 import json
 import os
-import queue
-import threading
 import time
-import urllib.error
-import urllib.request
 from collections import Counter, deque
 from typing import Optional, Tuple
 
@@ -40,6 +42,7 @@ WINDOW_NAME = "Prediksi 36 Kelas (Huruf & Kata) - Q/Esc untuk keluar"
 
 
 def extract_webcam_landmarks(results, max_num_hands: int = 2) -> np.ndarray:
+    """Ekstrak landmark MediaPipe ke slot tetap [Left, Right]."""
     slots = {
         "Left": np.zeros((21, 3), dtype=np.float32),
         "Right": np.zeros((21, 3), dtype=np.float32),
@@ -62,6 +65,7 @@ def extract_webcam_landmarks(results, max_num_hands: int = 2) -> np.ndarray:
 
 
 def hand_motion(previous: Optional[np.ndarray], current: np.ndarray) -> tuple[bool, float]:
+    """Hitung rata-rata perpindahan fisik tangan aktif antar dua frame."""
     present = bool(np.any(current != 0))
     if previous is None:
         return present, 0.0
@@ -73,6 +77,7 @@ def hand_motion(previous: Optional[np.ndarray], current: np.ndarray) -> tuple[bo
 
 
 def draw_landmarks(frame: np.ndarray, frame_landmarks: np.ndarray) -> None:
+    """Gambar visualisasi skeleton sendi tangan."""
     height, width = frame.shape[:2]
     num_hands = frame_landmarks.shape[0] // 21
     colors = [(0, 255, 255), (255, 140, 0)]
@@ -94,7 +99,14 @@ def draw_landmarks(frame: np.ndarray, frame_landmarks: np.ndarray) -> None:
             cv2.circle(frame, point, 5, (255, 255, 255), 1, cv2.LINE_AA)
 
 
-def put_status(frame: np.ndarray, title: str, detail: str, color: tuple[int, int, int], fps: float = 0.0) -> None:
+def put_status(
+    frame: np.ndarray,
+    title: str,
+    detail: str,
+    color: tuple[int, int, int],
+    fps: float = 0.0,
+) -> None:
+    """Overlay status header yang ramping (tinggi 70px, tidak menutupi wajah)."""
     h, w = frame.shape[:2]
     overlay = frame.copy()
     cv2.rectangle(overlay, (0, 0), (w, 70), (0, 0, 0), -1)
@@ -102,11 +114,11 @@ def put_status(frame: np.ndarray, title: str, detail: str, color: tuple[int, int
 
     if fps > 0:
         cv2.putText(frame, f"FPS: {fps:.0f}", (14, 20), cv2.FONT_HERSHEY_SIMPLEX, 0.42, (0, 255, 180), 1, cv2.LINE_AA)
-    cv2.putText(frame, "Model 36 Kelas (Huruf & Kata)", (75, 20), cv2.FONT_HERSHEY_SIMPLEX, 0.42, (255, 255, 0), 1, cv2.LINE_AA)
-    cv2.putText(frame, "[Q/Esc]: Keluar", (w - 110, 20), cv2.FONT_HERSHEY_SIMPLEX, 0.40, (200, 200, 200), 1, cv2.LINE_AA)
+    cv2.putText(frame, "Model 36 Kelas (Huruf & Kata)", (85, 20), cv2.FONT_HERSHEY_SIMPLEX, 0.42, (0, 215, 255), 1, cv2.LINE_AA)
+    cv2.putText(frame, "[Q/Esc]: Keluar", (w - 115, 20), cv2.FONT_HERSHEY_SIMPLEX, 0.38, (200, 200, 200), 1, cv2.LINE_AA)
 
     cv2.putText(frame, title, (14, 46), cv2.FONT_HERSHEY_SIMPLEX, 0.72, color, 2, cv2.LINE_AA)
-    cv2.putText(frame, detail, (14, 62), cv2.FONT_HERSHEY_SIMPLEX, 0.42, (230, 230, 230), 1, cv2.LINE_AA)
+    cv2.putText(frame, detail, (14, 63), cv2.FONT_HERSHEY_SIMPLEX, 0.42, (230, 230, 230), 1, cv2.LINE_AA)
 
 
 def prediction_consensus(
@@ -115,6 +127,7 @@ def prediction_consensus(
     vote_ratio: float,
     stable_confidence: float,
 ) -> tuple[Optional[int], Optional[int], float, float]:
+    """Evaluasi voting konsensus window prediksi."""
     if not predictions:
         return None, None, 0.0, 0.0
 
@@ -140,6 +153,8 @@ def prediction_consensus(
 
 
 class CombinedAudioPlayer:
+    """Player audio terpadu yang mendukung audio huruf dan kata."""
+
     def __init__(self, letters_dir: str, words_dir: str):
         self.letters_dir = resolve_input_path(letters_dir)
         self.words_dir = resolve_input_path(words_dir)
@@ -184,15 +199,20 @@ def main() -> int:
     parser.add_argument("--model_path", default=None, help="Path checkpoint (default: best_model.pth)")
     parser.add_argument("--display_width", type=int, default=640, help="Lebar window (default: 640)")
     parser.add_argument("--display_height", type=int, default=480, help="Tinggi window (default: 480)")
-    parser.add_argument("--motion_threshold", type=float, default=0.001, help="Ambang gerakan (default: 0.001)")
-    parser.add_argument("--pause_frames", type=int, default=15, help="Frame jeda (default: 15)")
+    parser.add_argument(
+        "--motion_threshold",
+        type=float,
+        default=0.003,
+        help="Ambang gerakan tangan untuk memicu perekaman (default: 0.003)",
+    )
+    parser.add_argument("--pause_frames", type=int, default=15, help="Frame jeda diam untuk fallback prediksi (default: 15)")
     parser.add_argument("--result_frames", type=int, default=45, help="Durasi hasil terkunci tampil (default: 45)")
-    parser.add_argument("--min_recording_frames", type=int, default=35, help="Frame minimum sebelum voting (default: 35)")
+    parser.add_argument("--min_recording_frames", type=int, default=45, help="Frame minimum sebelum voting (default: 45)")
     parser.add_argument("--prediction_interval", type=int, default=3, help="Interval inferensi berkala (default: 3)")
     parser.add_argument("--vote_window", type=int, default=5, help="Ukuran window voting (default: 5)")
     parser.add_argument("--vote_ratio", type=float, default=0.8, help="Rasio vote konsensus (default: 0.8)")
     parser.add_argument("--stable_confidence", type=float, default=0.8, help="Confidence minimum kunci (default: 0.8)")
-    parser.add_argument("--rearm_motion_frames", type=int, default=3, help="Frame gerak pemicu (default: 3)")
+    parser.add_argument("--rearm_motion_frames", type=int, default=3, help="Frame gerak pemicu isyarat baru (default: 3)")
     parser.add_argument("--letters_audio_dir", default="assets/letters_audio", help="Folder audio huruf")
     parser.add_argument("--words_audio_dir", default="assets/words_audio", help="Folder audio kata")
     parser.add_argument("--no_speech", action="store_true", help="Nonaktifkan suara audio")
@@ -280,7 +300,12 @@ def main() -> int:
         if audio_player is not None:
             audio_player.play(result_label)
 
-    print("\n[INFO] Webcam 36-Class aktif. Hasil akan terkunci saat voting stabil.\n")
+    print("\n" + "=" * 60)
+    print("AI SIGN LANGUAGE DETECTION (36 KELAS GABUNGAN)")
+    print("Ambang Gerak    :", args.motion_threshold)
+    print("Frame Min Record:", args.min_recording_frames)
+    print("Tekan [Q] atau [Esc] untuk keluar")
+    print("=" * 60 + "\n")
 
     try:
         while True:
@@ -288,6 +313,7 @@ def main() -> int:
             if not ok:
                 break
 
+            # FPS counter realtime
             frame_counter += 1
             if frame_counter >= 15:
                 now = time.time()
@@ -295,6 +321,7 @@ def main() -> int:
                 fps_start_time = now
                 frame_counter = 0
 
+            # Resize display
             if (frame.shape[1], frame.shape[0]) != (display_w, display_h):
                 frame = cv2.resize(frame, (display_w, display_h), interpolation=cv2.INTER_LINEAR)
 
@@ -306,6 +333,7 @@ def main() -> int:
 
             draw_landmarks(frame, current)
 
+            # ---------------- STATE MACHINE ----------------
             if state == "WAITING":
                 if present and motion >= args.motion_threshold:
                     state = "RECORDING"
@@ -315,8 +343,10 @@ def main() -> int:
                     prediction_history.clear()
                     candidate_label = ""
                     candidate_confidence = 0.0
+                    candidate_ratio = 0.0
+
                 title = "Siap Mulai Gerakan"
-                detail = "Peragakan Huruf atau Kata"
+                detail = "Gerakkan tangan untuk membaca isyarat"
                 color = (0, 215, 255)
 
             elif state == "RECORDING":
@@ -326,11 +356,13 @@ def main() -> int:
                 if len(buffer) > max_buffer_size:
                     buffer.pop(0)
 
+                # Deteksi jeda diam vs gerakan aktif
                 if present and motion < args.motion_threshold:
                     quiet_frames += 1
                 elif motion >= args.motion_threshold:
                     quiet_frames = 0
 
+                # 1. Inferensi berkala & voting konsensus
                 if (
                     len(buffer) >= args.min_recording_frames
                     and frames_since_prediction >= args.prediction_interval
@@ -356,6 +388,7 @@ def main() -> int:
                             f"Voting stabil ({candidate_ratio * 100:.0f}%)",
                         )
 
+                # 2. Fallback jeda diam setelah gerakan
                 if (
                     state == "RECORDING"
                     and len(buffer) >= args.min_recording_frames
@@ -403,6 +436,7 @@ def main() -> int:
                     candidate_confidence = 0.0
 
             else:  # REARM
+                # Menunggu gerakan nyata baru. Jika tangan/jari diam di layar, tetap di REARM!
                 if present and motion >= args.motion_threshold:
                     rearm_motion_count += 1
                     rearm_motion_buffer.append(current.copy())
@@ -423,7 +457,7 @@ def main() -> int:
                     color = (0, 215, 255)
                 else:
                     title = "Siap Isyarat Berikutnya"
-                    detail = "Gerakkan tangan ke isyarat baru"
+                    detail = "Gerakkan tangan untuk isyarat baru"
                     color = (0, 215, 255)
 
             if state != "RESULT" and result_label:
@@ -452,4 +486,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-
