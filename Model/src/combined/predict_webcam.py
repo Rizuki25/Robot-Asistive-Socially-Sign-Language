@@ -30,6 +30,7 @@ import torch
 import yaml
 
 from src.common.utils import get_device
+from src.common.robot_response import RobotResponseClient
 from src.combined.model import CombinedBiLSTM
 from src.combined.predict_video import (
     MODEL_ROOT,
@@ -195,6 +196,11 @@ class CombinedAudioPlayer:
 def main() -> int:
     parser = argparse.ArgumentParser(description="Prediksi 36 kelas realtime dari webcam")
     parser.add_argument("--camera_index", type=int, default=0, help="Index webcam (default: 0)")
+    parser.add_argument(
+        "--camera_url",
+        default=None,
+        help="URL stream kamera HTTP/MJPEG; jika diisi, menggantikan camera_index",
+    )
     parser.add_argument("--config", default="configs/combined_90.yaml", help="Path config gabungan")
     parser.add_argument("--model_path", default=None, help="Path checkpoint (default: best_model.pth)")
     parser.add_argument("--display_width", type=int, default=640, help="Lebar window (default: 640)")
@@ -217,7 +223,16 @@ def main() -> int:
     parser.add_argument("--words_audio_dir", default="assets/words_audio", help="Folder audio kata")
     parser.add_argument("--no_speech", action="store_true", help="Nonaktifkan suara audio")
     parser.add_argument("--mirror", action="store_true", help="Cerminkan tampilan kamera")
+    parser.add_argument("--robot_url", default=None,
+                        help="Bridge respons ROS, contoh http://192.168.50.2:8091")
     args = parser.parse_args()
+
+    robot_client = None
+    if args.robot_url:
+        robot_client = RobotResponseClient(
+            args.robot_url, os.environ.get("AINEX_RESPONSE_TOKEN", ""),
+            min_confidence=args.stable_confidence,
+        )
 
     config_path = resolve_input_path(args.config)
     with open(config_path, "r", encoding="utf-8") as f:
@@ -249,14 +264,18 @@ def main() -> int:
     if not args.no_speech:
         audio_player = CombinedAudioPlayer(args.letters_audio_dir, args.words_audio_dir)
 
-    capture = cv2.VideoCapture(args.camera_index)
+    camera_source = args.camera_url or args.camera_index
+    capture = cv2.VideoCapture(camera_source)
     if not capture.isOpened():
-        print(f"[ERROR] Webcam index {args.camera_index} tidak dapat dibuka")
+        print("[ERROR] Sumber kamera tidak dapat dibuka. Periksa kamera atau URL stream.")
+        capture.release()
         return 1
 
-    capture.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
-    capture.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
-    capture.set(cv2.CAP_PROP_FPS, 30)
+    if not args.camera_url:
+        capture.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
+        capture.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+        capture.set(cv2.CAP_PROP_FPS, 30)
+    print("[INFO] Sumber kamera:", "stream jaringan" if args.camera_url else "webcam lokal")
 
     display_w = args.display_width
     display_h = args.display_height
@@ -299,6 +318,8 @@ def main() -> int:
         print(f"[RESULT] {source}: {result_label} (confidence: {result_confidence * 100:.2f}%)")
         if audio_player is not None:
             audio_player.play(result_label)
+        if robot_client is not None:
+            robot_client.submit(result_label, confidence)
 
     print("\n" + "=" * 60)
     print("AI SIGN LANGUAGE DETECTION (36 KELAS GABUNGAN)")
@@ -311,7 +332,31 @@ def main() -> int:
         while True:
             ok, frame = capture.read()
             if not ok:
+                print("[WARN] Pembacaan kamera berhenti. Periksa koneksi lalu jalankan ulang program.")
                 break
+
+            # Keep draining the video while the robot moves; do not classify its motion.
+            if robot_client is not None and robot_client.busy:
+                previous = None
+                buffer = []
+                prediction_history.clear()
+                quiet_frames = 0
+                frames_since_prediction = 0
+                rearm_motion_count = 0
+                rearm_motion_buffer = []
+                state = "WAITING"
+                fps_val = 0.0
+                frame_counter = 0
+                fps_start_time = time.time()
+                frame = cv2.resize(frame, (display_w, display_h))
+                if args.mirror:
+                    frame = cv2.flip(frame, 1)
+                put_status(frame, "Robot Merespons", "Menunggu respons / jeda sebelum isyarat baru",
+                           (0, 215, 255))
+                cv2.imshow(WINDOW_NAME, frame)
+                if cv2.waitKey(1) & 0xFF in (ord("q"), 27):
+                    break
+                continue
 
             # FPS counter realtime
             frame_counter += 1
@@ -327,6 +372,8 @@ def main() -> int:
 
             rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
             hand_results = mp_hands.process(rgb)
+            if robot_client is not None:
+                robot_client.heartbeat()
             current = extract_webcam_landmarks(hand_results, max_num_hands=2)
             present, motion = hand_motion(previous, current)
             previous = current.copy()

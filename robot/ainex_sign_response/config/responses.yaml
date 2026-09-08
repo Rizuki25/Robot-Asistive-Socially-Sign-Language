@@ -1,0 +1,15 @@
+# Verify these settings against the actual Pi 4B installation before live mode.
+hardware_verified: false
+action_dir: /home/ubuntu/software/ainex_controller/ActionGroups
+halo_action: greet
+min_confidence: 0.8
+cooldown_s: 2.0
+nod:
+  # Candidate values, NOT calibrated on the user's robot. Units are servo ticks.
+  servo_id: 24
+  center: 500
+  amplitude: 35
+  min_position: 450
+  max_position: 550
+  duration_ms: 500
+  cycles: 2

@@ -1,0 +1,261 @@
+{
+  "provider": "Microsoft Edge online TTS via edge-tts",
+  "voice": "id-ID-GadisNeural",
+  "rate": "-10%",
+  "format": "PCM WAV mono 24000 Hz 16-bit",
+  "files": [
+    {
+      "label": "A",
+      "spoken_text": "a",
+      "file": "letters_audio/A.wav",
+      "duration_seconds": 0.566,
+      "sha256": "b4ad0d14622d24d00fc35ff3ade812e37374f826b7064dc15ab202bd8b432833"
+    },
+    {
+      "label": "Apa",
+      "spoken_text": "Apa",
+      "file": "words_audio/Apa.wav",
+      "duration_seconds": 0.754,
+      "sha256": "1d7e309a58cef39a1ca72cc79219011c355fab5d08047289f86ad53ad6a43be4"
+    },
+    {
+      "label": "B",
+      "spoken_text": "bé",
+      "file": "letters_audio/B.wav",
+      "duration_seconds": 0.609,
+      "sha256": "37b0f2979122416c4a7177c28d92be4042fed4131f2cfc9e6abfbed538b2bfeb"
+    },
+    {
+      "label": "Bagaimana",
+      "spoken_text": "Bagaimana",
+      "file": "words_audio/Bagaimana.wav",
+      "duration_seconds": 1.234,
+      "sha256": "e52099311cc1f45da0575bb38bc15dc83e9e03f839158400721c96fd5b14e457"
+    },
+    {
+      "label": "Baik",
+      "spoken_text": "Baik",
+      "file": "words_audio/Baik.wav",
+      "duration_seconds": 0.65,
+      "sha256": "0b1d2b3f77856066d84dff4c12f460dde84a4692d22cc68d1249fdb3c1de56b7"
+    },
+    {
+      "label": "Belajar",
+      "spoken_text": "Belajar",
+      "file": "words_audio/Belajar.wav",
+      "duration_seconds": 1.065,
+      "sha256": "f00a225833195b4b1ac7b1f9ddc8f203e038065c425c259b222575fe134b7a43"
+    },
+    {
+      "label": "C",
+      "spoken_text": "cé",
+      "file": "letters_audio/C.wav",
+      "duration_seconds": 0.502,
+      "sha256": "40e237f756e8a80b4b7ff1509709c436813739e143a82affe5edb2503261b617"
+    },
+    {
+      "label": "D",
+      "spoken_text": "dé",
+      "file": "letters_audio/D.wav",
+      "duration_seconds": 0.599,
+      "sha256": "658016241916ddd2542a88485dffbd3163957372b1571ae3dfb612359b7028e8"
+    },
+    {
+      "label": "E",
+      "spoken_text": "é",
+      "file": "letters_audio/E.wav",
+      "duration_seconds": 0.439,
+      "sha256": "4aa852c47d0bf15415861635152ded7d308274acaeee33e5a7b1c2034fb361d5"
+    },
+    {
+      "label": "F",
+      "spoken_text": "ef",
+      "file": "letters_audio/F.wav",
+      "duration_seconds": 0.779,
+      "sha256": "abde2acdc859a2f2ea3ac8d3d710b79a121b942ad9f4eb700ecff02cb21087b2"
+    },
+    {
+      "label": "G",
+      "spoken_text": "gé",
+      "file": "letters_audio/G.wav",
+      "duration_seconds": 0.569,
+      "sha256": "e86cebd21510988fce08cd0eee511fe05913dfe83c922a10c496e23071fb0b24"
+    },
+    {
+      "label": "H",
+      "spoken_text": "ha",
+      "file": "letters_audio/H.wav",
+      "duration_seconds": 0.711,
+      "sha256": "01f10bfe080745cb43d966d475209ca82bec7b281c8c13f0cdff2f35025cd1ae"
+    },
+    {
+      "label": "Halo",
+      "spoken_text": "Halo",
+      "file": "words_audio/Halo.wav",
+      "duration_seconds": 0.848,
+      "sha256": "a3a7a43fc62733b03f91fab917274b1321febbe5d379f30d1a8351ba8ef93f68"
+    },
+    {
+      "label": "I",
+      "spoken_text": "i",
+      "file": "letters_audio/I.wav",
+      "duration_seconds": 0.566,
+      "sha256": "8447b353050ac4b9d0b27190bb7d490aee1ece33b88adaba8e97b36b0d81c164"
+    },
+    {
+      "label": "J",
+      "spoken_text": "jé",
+      "file": "letters_audio/J.wav",
+      "duration_seconds": 0.533,
+      "sha256": "4e197b01620104a116ea49b8dab6d010a19fc0b13b3ce482d199ac2cd9ddefaa"
+    },
+    {
+      "label": "K",
+      "spoken_text": "ka",
+      "file": "letters_audio/K.wav",
+      "duration_seconds": 0.864,
+      "sha256": "12d3f8616da8fdd5664d5e2efdbfb4eccb85f3e9974fbe002e1bf856edb9b73b"
+    },
+    {
+      "label": "Kamu",
+      "spoken_text": "Kamu",
+      "file": "words_audio/Kamu.wav",
+      "duration_seconds": 0.773,
+      "sha256": "e11d7fa4af8984e6aea20980143f9cc2b67e410c74e936cfe9bb47d268f0dd8a"
+    },
+    {
+      "label": "Kita",
+      "spoken_text": "Kita",
+      "file": "words_audio/Kita.wav",
+      "duration_seconds": 0.772,
+      "sha256": "095a28b9fa106b1d5cc8b784e7b76505e78548705849f711ec125b32a23b1487"
+    },
+    {
+      "label": "L",
+      "spoken_text": "el",
+      "file": "letters_audio/L.wav",
+      "duration_seconds": 0.561,
+      "sha256": "fb3cb5523dd77cbae41defd0a96fef77788d57bd3b4a33468f83efadbaef9c75"
+    },
+    {
+      "label": "M",
+      "spoken_text": "em",
+      "file": "letters_audio/M.wav",
+      "duration_seconds": 0.619,
+      "sha256": "99bcd4fd1673871f2ac360f175228ad3bf582716606314b7de2db17516e37cb3"
+    },
+    {
+      "label": "Makan",
+      "spoken_text": "Makan",
+      "file": "words_audio/Makan.wav",
+      "duration_seconds": 0.884,
+      "sha256": "9aace6f71722945238062ce8ef81bfd9032f86541a66f11df24b5561b1e34880"
+    },
+    {
+      "label": "Melihat",
+      "spoken_text": "Melihat",
+      "file": "words_audio/Melihat.wav",
+      "duration_seconds": 0.83,
+      "sha256": "0e4daf1349528953fc6911c5c61955c33833f5fb134a7b0562f210e602ebb136"
+    },
+    {
+      "label": "N",
+      "spoken_text": "en",
+      "file": "letters_audio/N.wav",
+      "duration_seconds": 0.611,
+      "sha256": "bf65bb908c9d8d87d9fb0ab396de7733af95de8caab9cf3ed6936b69376fa263"
+    },
+    {
+      "label": "O",
+      "spoken_text": "o",
+      "file": "letters_audio/O.wav",
+      "duration_seconds": 0.547,
+      "sha256": "061587690f2fc105c417dfbf3c7f15a0637552b7e735ef4d2d49f9934e5c3fc3"
+    },
+    {
+      "label": "P",
+      "spoken_text": "pé",
+      "file": "letters_audio/P.wav",
+      "duration_seconds": 0.561,
+      "sha256": "8b34af03e77674d5978b4b4501c460dc316f9666e1ee7ee919028a4db8170775"
+    },
+    {
+      "label": "Q",
+      "spoken_text": "ki",
+      "file": "letters_audio/Q.wav",
+      "duration_seconds": 0.602,
+      "sha256": "dd9a6100db79a899275137bad25a9bad31bc43f9e9aec6715a136dac45959e89"
+    },
+    {
+      "label": "R",
+      "spoken_text": "er",
+      "file": "letters_audio/R.wav",
+      "duration_seconds": 0.593,
+      "sha256": "197279edcfef66b65b2521a616f43e4e12f2906178b14233845c9166a711c7f0"
+    },
+    {
+      "label": "S",
+      "spoken_text": "es",
+      "file": "letters_audio/S.wav",
+      "duration_seconds": 0.872,
+      "sha256": "96c1e616e7f9152c285036808fcab7b42b331ab768796608b3b4430770993c2a"
+    },
+    {
+      "label": "Saya",
+      "spoken_text": "Saya",
+      "file": "words_audio/Saya.wav",
+      "duration_seconds": 0.916,
+      "sha256": "6fe1b9d5f9bdc668b1cd6da240abd9b602756927d5d40730b1a0068066d86791"
+    },
+    {
+      "label": "T",
+      "spoken_text": "té",
+      "file": "letters_audio/T.wav",
+      "duration_seconds": 0.462,
+      "sha256": "02aad5b8311506e6e77d53796d256ed7b72832ccdfaf9e1331a1cb8f96f0ffa2"
+    },
+    {
+      "label": "U",
+      "spoken_text": "u",
+      "file": "letters_audio/U.wav",
+      "duration_seconds": 0.575,
+      "sha256": "7b998bf030c95e4186d13cb4a99022b7cf6f560f5c0ccc1b044eb6d7f7fcbab4"
+    },
+    {
+      "label": "V",
+      "spoken_text": "vé",
+      "file": "letters_audio/V.wav",
+      "duration_seconds": 0.671,
+      "sha256": "fe34677fff399abbf1294ee03bb56f23a3a96fa68d33e8e09a24dd11632f3b9c"
+    },
+    {
+      "label": "W",
+      "spoken_text": "wé",
+      "file": "letters_audio/W.wav",
+      "duration_seconds": 0.661,
+      "sha256": "b994837dff39b2c5bfc0063764b2058a6fcaa4e87a598d2838e75255de85b4ec"
+    },
+    {
+      "label": "X",
+      "spoken_text": "eks",
+      "file": "letters_audio/X.wav",
+      "duration_seconds": 0.789,
+      "sha256": "6d955cab939bbb40bccb1701fd8f7f2fd144e950fbc1e7940f9613db0fa8c318"
+    },
+    {
+      "label": "Y",
+      "spoken_text": "yé",
+      "file": "letters_audio/Y.wav",
+      "duration_seconds": 0.539,
+      "sha256": "1bd47b76536596744b7128bd8c25368faec8b0529363ce50316551546c6815e7"
+    },
+    {
+      "label": "Z",
+      "spoken_text": "zet",
+      "file": "letters_audio/Z.wav",
+      "duration_seconds": 0.654,
+      "sha256": "35bbb7bca2fae3484b44f5e5a5408b5e514f8351bb6aee3ec4ee529e649c4ac6"
+    }
+  ],
+  "normalization": "-20 dBFS RMS target, -1 dBFS peak ceiling"
+}

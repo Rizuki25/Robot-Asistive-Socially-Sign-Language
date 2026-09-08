@@ -1,0 +1,14 @@
+<launch>
+  <arg name="dry_run" default="true"/>
+  <arg name="ready_audio" default="false"/>
+  <arg name="audio_device" default="plughw:CARD=Headphones,DEV=0"/>
+  <node if="$(arg ready_audio)" pkg="ainex_sign_response" type="ready_audio_node.py" name="ready_audio" output="screen">
+    <param name="audio_file" value="$(find ainex_sign_response)/audio/ready.wav"/>
+    <param name="audio_device" value="$(arg audio_device)"/>
+  </node>
+  <node pkg="ainex_sign_response" type="response_node.py" name="sign_response" output="screen">
+    <param name="config" value="$(find ainex_sign_response)/config/responses.yaml"/>
+    <param name="dry_run" value="$(arg dry_run)"/>
+    <param name="port" value="8091"/>
+  </node>
+</launch>

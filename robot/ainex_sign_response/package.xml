@@ -1,0 +1,15 @@
+<?xml version="1.0"?>
+<package format="2">
+  <name>ainex_sign_response</name>
+  <version>0.1.0</version>
+  <description>Halo and Baik responses for AiNex through a local HTTP to ROS bridge.</description>
+  <maintainer email="maintainer@example.com">Project Maintainer</maintainer>
+  <license>MIT</license>
+  <buildtool_depend>catkin</buildtool_depend>
+  <exec_depend>rospy</exec_depend>
+  <exec_depend>std_msgs</exec_depend>
+  <exec_depend>sensor_msgs</exec_depend>
+  <exec_depend>alsa-utils</exec_depend>
+  <exec_depend>ainex_kinematics</exec_depend>
+  <exec_depend>python3-yaml</exec_depend>
+</package>

@@ -237,9 +237,42 @@ gerakan yang selesai dalam sekitar dua detik. Jika buffer lebih panjang daripada
 `max_seq_length`, preprocessing saat ini mengambil frame pertama sebanyak panjang
 config; bagian gerakan setelah frame ke-60 atau ke-90 tidak ikut diprediksi.
 
-#### Rekam suara sendiri untuk hasil prediksi
+#### Audio bahasa Indonesia untuk hasil prediksi
 
-Sistem menggunakan rekaman suara Anda sendiri, bukan Text-to-Speech sintetis. Instal dependency perekam melalui:
+Audio bawaan menggunakan suara sintetis **Gadis** (`id-ID-GadisNeural`), dibuat
+dengan Edge TTS. Tersedia 26 huruf di `assets/letters_audio/` dan 10 kata di
+`assets/words_audio/`. Semua file berupa WAV PCM mono 24 kHz 16-bit dan dapat
+diputar offline. Rekaman huruf lama sudah diganti. Sumber, teks pelafalan,
+durasi, dan checksum setiap file tercatat di `assets/audio_manifest.json`.
+
+Jalankan dari folder `Model/` untuk memakai audio dengan model gabungan:
+
+```bash
+python -m src.combined.predict_webcam --config configs/combined_90.yaml
+```
+
+Audio diputar melalui perangkat output Windows saat hasil prediksi terkunci.
+Pastikan speaker yang diinginkan menjadi perangkat output aktif.
+
+Untuk membuat ulang audio (memerlukan internet), pasang dependency khusus
+pembuatan audio lalu jalankan generator:
+
+```bash
+pip install edge-tts==7.2.8 imageio-ffmpeg==0.6.0
+python -m src.common.generate_label_audio
+```
+
+Generator menulis ke `assets/generated_audio/` agar audio aktif tidak langsung
+tertimpa. Setelah memeriksa hasilnya, salin isi `letters_audio/`, `words_audio/`,
+dan `audio_manifest.json` dari folder tersebut ke `assets/`.
+Opsi `--voice id-ID-ArdiNeural` memilih suara laki-laki.
+Pelafalan alfabet diatur melalui `LETTER_SPEECH` dalam generator.
+
+Sumber: [Edge TTS](https://github.com/rany2/edge-tts).
+
+#### Opsional: rekam suara sendiri
+
+Jika ingin mengganti suara sintetis dengan rekaman sendiri, instal dependency perekam melalui:
 
 ```powershell
 pip install -r requirements.txt
@@ -398,7 +431,8 @@ Opsi integrasi:
 - `outputs/letters_90/figures/` — kurva training dan confusion matrix
 - `outputs/letters_90/results/` — metrics dan classification report
 - `outputs/letters_90/predictions/` — lokasi yang disarankan untuk video hasil prediksi
-- `assets/letters_audio/` — rekaman suara pengguna `A.wav`–`Z.wav`
+- `assets/letters_audio/` — audio huruf Gadis `A.wav`–`Z.wav`
+- `assets/words_audio/` — audio Gadis untuk 10 kata model gabungan
 - `src/letters/record_letter_audio.py` — perekam suara A–Z terpandu
 - `src/letters/` — normalisasi, preprocessing, model, training, evaluasi, dan inference huruf
 - `src/common/` — ekstraksi landmark dan utilitas bersama
