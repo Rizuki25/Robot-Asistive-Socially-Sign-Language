@@ -21,8 +21,8 @@ with patch.dict(sys.modules, {'rospy': ros, 'std_msgs': MagicMock(),
 
 CONFIG = dict(hardware_verified=False, action_dir='/not/a/robot', halo_action='greet',
               min_confidence=0.8, cooldown_s=0,
-              nod=dict(servo_id=24, center=500, amplitude=35, min_position=450,
-                       max_position=550, duration_ms=500, cycles=2))
+              nod=dict(center=0.30, amplitude=0.10, min_position=0.20,
+                       max_position=0.40, duration_s=0.8, cycles=2))
 
 
 class ResponseTests(unittest.TestCase):
@@ -55,13 +55,31 @@ class ResponseTests(unittest.TestCase):
         steps = node.nod_steps(self.config)
         self.assertEqual(steps[0], steps[-1])
         self.assertEqual(len(steps), 6)
-        self.assertTrue(all(positions[0][0] == 24 for _, positions in steps))
+        self.assertEqual(steps[0], (0.8, 0.30))
+        self.assertEqual([p for _, p in steps], [0.30, 0.20, 0.40, 0.20, 0.40, 0.30])
+        self.assertTrue(all(0.20 <= position <= 0.40 for _, position in steps))
         self.assertEqual(self.responder.respond(dict(self.event, label='Baik'))[0], 200)
 
     def test_nod_limits(self):
-        self.config['nod']['center'] = 540
+        self.config['nod']['center'] = 0.39
         with self.assertRaises(ValueError):
             node.nod_steps(self.config)
+
+    def test_nod_uses_ros_and_returns_to_user_center(self):
+        self.responder.dry_run = False
+        self.responder.head_pub = MagicMock()
+        self.responder.head_pub.get_num_connections.return_value = 1
+        self.responder.head_message = MagicMock()
+        with patch.object(node.time, 'sleep'):
+            self.assertEqual(self.responder.respond(dict(self.event, label='Baik'))[0], 200)
+        self.assertEqual(self.responder.head_pub.publish.call_count, 6)
+        self.responder.head_message.assert_called_with(position=0.30, duration=0.8)
+
+    def test_live_label_gate(self):
+        self.responder.dry_run = False
+        self.responder.live_labels = ['Baik']
+        self.assertEqual(self.responder.respond(self.event)[0], 403)
+        self.assertFalse(self.responder.seen)
 
     def test_failure_disables_further_motion(self):
         self.responder.dry_run = False

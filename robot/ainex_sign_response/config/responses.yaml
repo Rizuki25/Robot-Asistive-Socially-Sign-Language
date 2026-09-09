@@ -1,15 +1,17 @@
-# Verify these settings against the actual Pi 4B installation before live mode.
-hardware_verified: false
+# Pi 4B API inspected; head range 0.20..0.40 manually tested by user.
+hardware_verified: true
+# Enable only the tested head response; greet still awaits a physical test.
+live_labels: [Baik]
 action_dir: /home/ubuntu/software/ainex_controller/ActionGroups
 halo_action: greet
 min_confidence: 0.8
 cooldown_s: 2.0
 nod:
-  # Candidate values, NOT calibrated on the user's robot. Units are servo ticks.
-  servo_id: 24
-  center: 500
-  amplitude: 35
-  min_position: 450
-  max_position: 550
-  duration_ms: 500
+  # HeadState topic units, NOT raw servo ticks. Center tested by user.
+  # Endpoints tested; the two-cycle sequence is the next physical test.
+  center: 0.30
+  amplitude: 0.10
+  min_position: 0.20
+  max_position: 0.40
+  duration_s: 0.8
   cycles: 2

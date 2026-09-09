@@ -248,6 +248,7 @@ def main() -> int:
     num_classes, class_names = load_label_encoder(encoder_path)
     device = get_device()
 
+    print("[STARTUP] Membuat model pada perangkat inferensi...", flush=True)
     model = CombinedBiLSTM(
         input_size=config["model"]["input_size"],
         hidden_size=config["model"]["hidden_size"],
@@ -256,16 +257,30 @@ def main() -> int:
         dropout=config["model"]["dropout"],
     ).to(device)
 
+    print("[STARTUP] Memuat checkpoint...", flush=True)
     checkpoint = torch.load(model_path, map_location=device, weights_only=True)
     model.load_state_dict(checkpoint["model_state_dict"])
     model.eval()
+    print("[STARTUP] Model siap.", flush=True)
 
     audio_player = None
     if not args.no_speech:
         audio_player = CombinedAudioPlayer(args.letters_audio_dir, args.words_audio_dir)
 
     camera_source = args.camera_url or args.camera_index
-    capture = cv2.VideoCapture(camera_source)
+    print("[STARTUP] Membuka kamera (timeout stream 10 detik)...", flush=True)
+    if args.camera_url:
+        # Set at open time: FFmpeg does not accept these through capture.set().
+        try:
+            capture = cv2.VideoCapture(camera_source, cv2.CAP_FFMPEG, [
+                cv2.CAP_PROP_OPEN_TIMEOUT_MSEC, 10000,
+                cv2.CAP_PROP_READ_TIMEOUT_MSEC, 5000,
+            ])
+        except cv2.error as error:
+            print("[ERROR] Backend kamera FFmpeg gagal: {}".format(error), flush=True)
+            return 1
+    else:
+        capture = cv2.VideoCapture(camera_source)
     if not capture.isOpened():
         print("[ERROR] Sumber kamera tidak dapat dibuka. Periksa kamera atau URL stream.")
         capture.release()
@@ -280,6 +295,7 @@ def main() -> int:
     display_w = args.display_width
     display_h = args.display_height
 
+    print("[STARTUP] Menyiapkan MediaPipe...", flush=True)
     mp_hands = mp.solutions.hands.Hands(
         static_image_mode=False,
         max_num_hands=2,
@@ -289,6 +305,7 @@ def main() -> int:
 
     cv2.namedWindow(WINDOW_NAME, cv2.WINDOW_NORMAL)
     cv2.resizeWindow(WINDOW_NAME, display_w, display_h)
+    print("[STARTUP] Menunggu frame kamera pertama...", flush=True)
 
     previous = None
     buffer = []

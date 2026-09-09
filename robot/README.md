@@ -1,7 +1,7 @@
 # Respons sosial AiNex: Halo dan Baik
 
-Status: bridge laptop/ROS dan urutan anggukan telah dibuat, tetapi API serta
-gerakan fisik pada AiNex 4B pengguna belum diverifikasi. Default **dry-run**:
+Status: API Pi 4B dan rentang kepala 0.20–0.40 telah diperiksa/diuji pengguna.
+Urutan dua anggukan dan gerakan greet masih perlu tes fisik. Default **dry-run**:
 tidak mengimpor driver servo dan tidak menggerakkan robot.
 
 Alur: hasil terkunci `predict_webcam.py` → HTTP port 8091 → node ROS
@@ -11,9 +11,11 @@ Tidak perlu ROS pada laptop. Tidak ada perubahan checkpoint atau training.
 - Halo: memanggil action bawaan `greet.d6a`. Keberadaan dan isi gerakan harus
   dicek pada robot; tidak ada file gerakan baru yang menimpa action bawaan.
 - Baik: urutan center → center-amplitude → center+amplitude, dua kali,
-  lalu center. Kandidat default: servo tilt 24, center 500, amplitude 35,
-  500 ms per perpindahan. Ini satuan posisi servo, bukan derajat.
-  Nilai ini belum dikalibrasi pada robot pengguna.
+  lalu center melalui `/head_tilt_controller/command` (HeadState).
+  Center 0.30 mengikuti posisi yang sudah diuji pengguna, amplitude 0.10,
+  durasi 0.8 detik per perpindahan. Urutan: 0.30, 0.20, 0.40, 0.20, 0.40, 0.30.
+  Ini satuan posisi topic kepala, bukan angka servo mentah 500.
+  Urutan anggukan lengkap masih perlu diuji pada robot.
 - Hanya label Halo/Baik dengan confidence >= 0.8; gerakan diserialkan,
   request saat sibuk ditolak, ID duplikat diabaikan (256 ID terakhir per proses).
 - Laptop menahan klasifikasi saat request berlangsung dan dua detik sesudahnya,
@@ -77,6 +79,13 @@ rostopic echo /sign_response/status
 ```
 
 ## 3. Aktifkan gerakan setelah verifikasi perangkat
+
+Konfigurasi terbaru memakai `hardware_verified: true` berdasarkan pemeriksaan
+API dan tes manual kepala, dengan `live_labels: [Baik]`. Jadi live mode saat ini
+hanya mengizinkan Baik dan tidak membuka driver serial MotionManager terpisah.
+Halo ditolak sampai live_labels diubah setelah persiapan tes greet. Dry-run masih
+menerima kedua label. Untuk tes kepala pertama gunakan label `Baik` pada contoh
+PowerShell di bawah, bukan `Halo`.
 
 Pastikan `greet` benar-benar gerakan yang dikehendaki dan postur awal/akhirnya
 sesuai. Verifikasi center/rentang tilt dan API robot sebelum mengubah

@@ -11,5 +11,6 @@
   <exec_depend>sensor_msgs</exec_depend>
   <exec_depend>alsa-utils</exec_depend>
   <exec_depend>ainex_kinematics</exec_depend>
+  <exec_depend>ainex_interfaces</exec_depend>
   <exec_depend>python3-yaml</exec_depend>
 </package>

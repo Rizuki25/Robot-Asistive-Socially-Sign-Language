@@ -17,31 +17,34 @@ import yaml
 
 def nod_steps(config):
     n = config["nod"]
-    keys = ("servo_id", "center", "amplitude", "min_position", "max_position",
-            "duration_ms", "cycles")
-    if any(type(n[k]) is not int for k in keys):
-        raise ValueError("Nod settings must be integers")
-    if n["servo_id"] != 24:
-        raise ValueError("This adapter supports documented head tilt servo 24 only")
-    if not (1 <= n["amplitude"] <= 60 and 300 <= n["duration_ms"] <= 1000
+    keys = ("center", "amplitude", "min_position", "max_position", "duration_s")
+    if any(type(n[k]) not in (int, float) or not math.isfinite(n[k]) for k in keys):
+        raise ValueError("Nod settings must be finite numbers")
+    if type(n["cycles"]) is not int or not (
+            0 < n["amplitude"] <= 0.10 and 0.5 <= n["duration_s"] <= 2.0
             and 1 <= n["cycles"] <= 3):
         raise ValueError("Nod amplitude/duration/cycles outside limits")
     low, high = n["min_position"], n["max_position"]
-    if not 0 <= low < high <= 1000:
+    if not -0.5 <= low < high <= 0.5:
         raise ValueError("Invalid calibrated position limits")
     positions = [n["center"]]
     positions += [n["center"] - n["amplitude"],
                   n["center"] + n["amplitude"]] * n["cycles"]
     positions.append(n["center"])
-    if any(p < low or p > high for p in positions):
+    # 0.30 - 0.10 may be 0.19999999999999998 in binary floating point.
+    if any(p < low - 1e-12 or p > high + 1e-12 for p in positions):
         raise ValueError("Nod exceeds calibrated limits")
-    return [(n["duration_ms"], [[n["servo_id"], p]]) for p in positions]
+    return [(float(n["duration_s"]), min(high, max(low, float(p)))) for p in positions]
 
 
 class Responder:
     def __init__(self, config, dry_run):
         self.config = config
         self.dry_run = dry_run
+        self.live_labels = config.get("live_labels", ["Halo", "Baik"])
+        if not isinstance(self.live_labels, list) or not self.live_labels or any(
+                label not in ("Halo", "Baik") for label in self.live_labels):
+            raise ValueError("Invalid live_labels")
         self.steps = nod_steps(config)
         self.min_confidence = float(config["min_confidence"])
         self.cooldown = float(config["cooldown_s"])
@@ -52,16 +55,20 @@ class Responder:
                 c not in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-" for c in action):
             raise ValueError("Invalid action name")
         self.manager = None
+        self.head_pub = None
         if not dry_run:
             if config.get("hardware_verified") is not True:
                 raise ValueError("Verify Pi 4B API, greet action and head positions first")
-            if not (Path(config["action_dir"]) / (action + ".d6a")).is_file():
-                raise ValueError("Configured greeting action does not exist")
-            from ainex_kinematics.motion_manager import MotionManager
-            self.manager = MotionManager(config["action_dir"])
-            if not callable(getattr(self.manager, "run_action", None)) or not callable(
-                    getattr(self.manager, "set_servos_position", None)):
-                raise ValueError("Unsupported MotionManager API")
+            if "Halo" in self.live_labels:
+                if not (Path(config["action_dir"]) / (action + ".d6a")).is_file():
+                    raise ValueError("Configured greeting action does not exist")
+                from ainex_kinematics.motion_manager import MotionManager
+                self.manager = MotionManager(config["action_dir"])
+                if not callable(getattr(self.manager, "run_action", None)):
+                    raise ValueError("Unsupported MotionManager API")
+            from ainex_interfaces.msg import HeadState
+            self.head_message = HeadState
+            self.head_pub = rospy.Publisher('/head_tilt_controller/command', HeadState, queue_size=1)
         self.lock = threading.Lock()
         self.seen = OrderedDict()
         self.until = 0.0
@@ -83,6 +90,8 @@ class Responder:
             return 400, {"status": "invalid_request"}
         if confidence < self.min_confidence:
             return 422, {"status": "low_confidence"}
+        if not self.dry_run and event["label"] not in self.live_labels:
+            return 403, {"status": "label_not_enabled_for_live_motion"}
         if not self.lock.acquire(blocking=False):
             return 409, {"status": "busy"}
         try:
@@ -103,11 +112,18 @@ class Responder:
                 elif event["label"] == "Halo":
                     self.manager.run_action(self.config["halo_action"])
                 else:
-                    for duration, positions in self.steps:
+                    deadline = time.monotonic() + 3.0
+                    while self.head_pub.get_num_connections() == 0:
+                        if rospy.is_shutdown() or time.monotonic() >= deadline:
+                            raise RuntimeError("Head controller subscriber unavailable")
+                        time.sleep(0.05)
+                    for duration, position in self.steps:
                         if rospy.is_shutdown():
                             raise RuntimeError("Shutdown during motion")
-                        self.manager.set_servos_position(duration, positions)
-                        time.sleep(duration / 1000.0)
+                        if self.head_pub.get_num_connections() == 0:
+                            raise RuntimeError("Head controller disconnected")
+                        self.head_pub.publish(self.head_message(position=position, duration=duration))
+                        time.sleep(duration + 0.05)
                 status = "dry_run_done" if self.dry_run else "command_sequence_done"
                 self.report(event, status)
                 return 200, {"status": status}
