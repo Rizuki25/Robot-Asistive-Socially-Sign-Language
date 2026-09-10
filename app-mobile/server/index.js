@@ -2,12 +2,20 @@ import cors from "cors";
 import express from "express";
 import http from "http";
 import { Server } from "socket.io";
+import { normalizeEmotion, EMOTION_TTL_MS } from "../shared/emotion.js";
 
 const PORT = process.env.PORT || 3001;
 const CLIENT_ORIGIN = process.env.CLIENT_ORIGIN || "*";
 const MODEL_API_KEY = process.env.MODEL_API_KEY || "";
 const app = express();
 const server = http.createServer(app);
+const latestEmotions = new Map();
+setInterval(() => {
+  const now = Date.now();
+  for (const [room, value] of latestEmotions) {
+    if (now - value.timestamp >= EMOTION_TTL_MS) latestEmotions.delete(room);
+  }
+}, EMOTION_TTL_MS).unref();
 
 function requireModelApiKey(request, response, next) {
   if (!MODEL_API_KEY) {
@@ -69,12 +77,35 @@ app.post("/api/sign-result", requireModelApiKey, (request, response) => {
   response.json({ message: "Hasil bahasa isyarat dikirim.", data: message });
 });
 
+app.post("/api/emotion-result", requireModelApiKey, (request, response) => {
+  const result = normalizeEmotion(request.body);
+  if (!result) {
+    response.status(400).json({ message: "Hasil ekspresi tidak valid." });
+    return;
+  }
+  const data = { ...result, timestamp: Date.now(), expiresInMs: EMOTION_TTL_MS };
+  latestEmotions.set(data.roomId, data);
+  io.to(data.roomId).emit("emotion-result", data);
+  response.json({ message: "Hasil ekspresi dikirim.", data });
+});
+
 io.on("connection", (socket) => {
   console.log("Client connected:", socket.id);
 
-  socket.on("join-room", (roomId) => {
+  socket.on("join-room", (roomId, acknowledge) => {
+    if (typeof roomId !== "string" || !roomId.trim() || roomId.length > 100) return;
+    roomId = roomId.trim();
+    for (const room of socket.rooms) {
+      if (room !== socket.id) socket.leave(room);
+    }
     socket.join(roomId);
+    const latest = latestEmotions.get(roomId);
+    if (latest && Date.now() - latest.timestamp < EMOTION_TTL_MS) {
+      socket.emit("emotion-result", { ...latest,
+        expiresInMs: EMOTION_TTL_MS - (Date.now() - latest.timestamp) });
+    }
     console.log(`${socket.id} joined room ${roomId}`);
+    if (typeof acknowledge === "function") acknowledge({ roomId });
   });
 
   socket.on("send-message", (message) => {
@@ -98,5 +129,5 @@ io.on("connection", (socket) => {
 });
 
 server.listen(PORT, "0.0.0.0", () => {
-  console.log(`Socket.IO server running on http://0.0.0.0:${PORT}`);
+  console.log(`Socket.IO server running on http://0.0.0.0:${server.address().port}`);
 });

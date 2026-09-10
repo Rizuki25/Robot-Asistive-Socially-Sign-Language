@@ -220,7 +220,8 @@ Backend menerima:
 Hasil prediksi diteruskan lewat Socket.IO hanya ke perangkat yang join room yang
 sama. Video kamera tetap diproses dan ditampilkan hanya di laptop; tidak ada
 frame yang dikirim ke backend atau HP. Halaman **Bahasa Isyarat -> Suara** hanya
-menampilkan hasil teks, tombol membacakan, dan opsi suara otomatis.
+menampilkan hasil teks, tombol membacakan, opsi suara otomatis, dan panel ekspresi
+wajah jika hasil emosi dikirim (lihat bagian integrasi ekspresi di bawah).
 
 ### Menjalankan
 
@@ -263,3 +264,63 @@ $env:MODEL_API_KEY="ganti-dengan-kunci-rahasia"
 ```
 
 Backend tetap dapat dipakai tanpa API key untuk demo lokal.
+
+## Ekspresi wajah di kedua halaman
+
+Halaman **Bahasa Isyarat → Suara** memakai panel wajah robot beranimasi sebagai
+pengganti placeholder video nonaktif. **Mode Percakapan** memakai versi ringkas
+di atas chat. Warna dan bentuk wajah mengikuti tujuh kelas model; hasil majemuk
+menampilkan dua wajah. Teks dan persentase keyakinan melengkapi animasi.
+Animasi mengikuti preferensi `prefers-reduced-motion` perangkat.
+
+Mode Percakapan tetap menyimpan tiga pesan terakhir, dengan scroll di area chat
+untuk layar pendek atau pesan panjang. Halaman tidak ikut scroll. Input isyarat
+manual tersedia melalui bagian yang dapat dibuka di bawah tombol balasan suara.
+
+Jalankan backend dan frontend di dua terminal PowerShell laptop:
+
+```powershell
+cd D:\Robot-Asistive-Socially-Sign-Language\app-mobile
+npm.cmd run server
+```
+
+```powershell
+cd D:\Robot-Asistive-Socially-Sign-Language\app-mobile
+npm.cmd run dev
+```
+
+Buka `http://localhost:5173`. Setelah kamera robot tersedia, terminal model:
+
+```powershell
+cd D:\Robot-Asistive-Socially-Sign-Language\Model
+python -u -m src.combined.predict_webcam --config configs/combined_90.yaml --camera_url "http://192.168.50.2:8080/stream?topic=/camera/image_raw&type=ros_compressed" --no_speech --emotion --web_url http://localhost:3001 --web_room demo-ta
+```
+
+Gunakan room yang sama pada aplikasi. Frontend HP tetap dapat memakai tunnel
+HTTPS seperti sebelumnya; model di laptop cukup mengirim ke backend localhost.
+Perubahan frontend lokal tidak otomatis memperbarui deployment Vercel.
+
+Endpoint baru (API key opsional sama dengan `/api/sign-result`):
+
+```http
+POST /api/emotion-result
+Content-Type: application/json
+x-model-api-key: NILAI_MODEL_API_KEY_JIKA_DIAKTIFKAN
+
+{"roomId":"demo-ta","status":"detected","emotions":["happy"],"confidence":0.92}
+```
+
+`emotions` berisi satu atau dua nama dari `angry`, `disgust`, `fear`, `happy`,
+`neutral`, `sad`, `surprise`. Status `detected` membutuhkan confidence 0.4–1.
+Status lain: `uncertain`, `no_face`, `waiting`, `paused`, `error`; semuanya tanpa
+nama emosi. Contoh wajah hilang: `{"roomId":"demo-ta","status":"no_face"}`.
+
+Backend mengirim event Socket.IO `emotion-result` hanya ke room tujuan, terpisah
+dari `message`. Hasil emosi tidak memenuhi chat atau memicu suara otomatis.
+Panel menghapus hasil saat koneksi terputus, room berubah, atau tidak diperbarui
+selama 4 detik. Perangkat yang baru bergabung menerima hasil room yang masih segar.
+
+Validasi: `npm.cmd test` dan `npm.cmd run build`. Tes browser tambahan ada di
+`tests/emotion-ui.mjs`; jalankan dengan Playwright yang tersedia (atau arahkan
+`PLAYWRIGHT_MODULE` ke file `playwright/index.mjs`). Tes memakai Edge headless dan
+backend/Vite sementara dengan port terpisah, tanpa kamera atau gerakan robot.

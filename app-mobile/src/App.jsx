@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { io } from "socket.io-client";
+import EmotionPanel from "./EmotionPanel";
+import { normalizeEmotion, EMOTION_TTL_MS } from "../shared/emotion";
 
 const MODES = {
   MENU: "menu",
@@ -60,6 +62,7 @@ function App() {
   const [activeRoomId, setActiveRoomId] = useState(DEFAULT_ROOM_ID);
   const [socketStatus, setSocketStatus] = useState("Menghubungkan realtime...");
   const [messages, setMessages] = useState([]);
+  const [emotion, setEmotion] = useState(null);
 
   const speechRecognition = useMemo(() => {
     return window.SpeechRecognition || window.webkitSpeechRecognition || null;
@@ -110,18 +113,35 @@ function App() {
     });
 
     socketRef.current = socket;
+    let emotionTimer;
+    setEmotion(null);
 
     socket.on("connect", () => {
       setSocketStatus(`Realtime aktif: ${activeRoomId}`);
+      setEmotion(null);
       socket.emit("join-room", activeRoomId);
     });
 
     socket.on("disconnect", () => {
       setSocketStatus("Realtime terputus");
+      clearTimeout(emotionTimer);
+      setEmotion({ status: "disconnected" });
     });
 
     socket.on("connect_error", () => {
       setSocketStatus(`Gagal terhubung ke ${SOCKET_URL}`);
+      clearTimeout(emotionTimer);
+      setEmotion({ status: "disconnected" });
+    });
+
+    socket.on("emotion-result", (payload) => {
+      const next = normalizeEmotion(payload);
+      if (!next || next.roomId !== activeRoomId) return;
+      clearTimeout(emotionTimer);
+      setEmotion(next);
+      const ttl = Number.isFinite(payload.expiresInMs)
+        ? Math.min(EMOTION_TTL_MS, Math.max(0, payload.expiresInMs)) : EMOTION_TTL_MS;
+      emotionTimer = setTimeout(() => setEmotion({ status: "stale" }), ttl);
     });
 
     socket.on("message", (message) => {
@@ -146,6 +166,7 @@ function App() {
     });
 
     return () => {
+      clearTimeout(emotionTimer);
       socket.disconnect();
     };
   }, [activeRoomId]);
@@ -154,6 +175,7 @@ function App() {
     const nextRoomId = roomId.trim() || DEFAULT_ROOM_ID;
     setActiveRoomId(nextRoomId);
     setMessages([]);
+    setEmotion(null);
 
     if (socketRef.current?.connected) {
       socketRef.current.emit("join-room", nextRoomId);
@@ -267,9 +289,9 @@ function App() {
   };
 
   return (
-    <main className="min-h-screen bg-slate-100 px-4 py-4 text-slate-950 sm:py-6">
-      <section className="mx-auto flex min-h-[calc(100vh-2rem)] w-full max-w-md flex-col rounded-[2rem] bg-white p-2 shadow-xl shadow-slate-300/50 ring-1 ring-slate-100 sm:min-h-[calc(100vh-3rem)]">
-        <div className="flex flex-1 flex-col rounded-[1.5rem] bg-slate-50 p-5">
+    <main className={`${mode === MODES.CONVERSATION ? "conversation-layout" : "min-h-screen"} bg-slate-100 px-4 py-4 text-slate-950 sm:py-6`}>
+      <section className={`mx-auto flex ${mode === MODES.CONVERSATION ? "h-full min-h-0" : "min-h-[calc(100vh-2rem)] sm:min-h-[calc(100vh-3rem)]"} w-full max-w-md flex-col rounded-[2rem] bg-white p-2 shadow-xl shadow-slate-300/50 ring-1 ring-slate-100`}>
+        <div className="flex min-h-0 flex-1 flex-col rounded-[1.5rem] bg-slate-50 p-5">
           {mode === MODES.MENU && (
             <ModeSelector
               onSignToSpeech={() => setMode(MODES.SIGN_TO_SPEECH)}
@@ -280,6 +302,7 @@ function App() {
 
           {mode === MODES.SIGN_TO_SPEECH && (
             <SignToSpeechScreen
+              emotion={emotion}
               recognizedText={recognizedText}
               onSpeak={speakRecognizedText}
               onSend={() => sendRealtimeMessage("sign", recognizedText)}
@@ -308,6 +331,7 @@ function App() {
 
           {mode === MODES.CONVERSATION && (
             <ConversationScreen
+              emotion={emotion}
               activeRoomId={activeRoomId}
               roomId={roomId}
               setRoomId={setRoomId}
@@ -545,6 +569,7 @@ function SendIcon({ className }) {
 }
 
 function SignToSpeechScreen({
+  emotion,
   recognizedText,
   onSpeak,
   onSend,
@@ -573,21 +598,8 @@ function SignToSpeechScreen({
         </div>
       </div>
 
-      {/* Area kamera dipertahankan, stream video dinonaktifkan */}
-      <div className="-mx-5 bg-slate-950 px-5 pb-6 pt-4">
-        <span className="mb-3 inline-flex items-center gap-2 rounded-full bg-emerald-500/20 px-3 py-1 text-xs font-semibold text-emerald-300">
-          <span className="h-2 w-2 rounded-full bg-amber-400" />
-          Kamera Nonaktif
-        </span>
-        <div className="flex min-h-52 w-full min-w-0 max-w-full flex-col items-center justify-center overflow-hidden rounded-2xl border border-dashed border-slate-600 p-6 text-center">
-          <CameraIcon className="h-12 w-12 text-slate-500" />
-          <p className="mt-3 max-w-full break-words text-sm font-semibold text-slate-400">
-            Stream Kamera Dinonaktifkan
-          </p>
-        </div>
-        <p className="mt-3 text-center text-[11px] font-medium text-slate-400">
-          Hanya hasil teks yang diterima dari model
-        </p>
+      <div className="-mx-5 bg-slate-950 px-5 pb-4 pt-4">
+        <EmotionPanel result={emotion} />
         <p className="mt-3 flex items-center justify-center gap-1.5 text-center text-[11px] font-medium text-slate-400">
           <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
           Room: <span className="font-semibold text-emerald-300">
@@ -754,6 +766,7 @@ function SpeechToTextScreen({
 }
 
 function ConversationScreen({
+  emotion,
   activeRoomId,
   roomId,
   setRoomId,
@@ -769,8 +782,18 @@ function ConversationScreen({
   onSendSign,
   onStartListening,
 }) {
+  const chatRef = useRef(null);
+  useEffect(() => {
+    const chat = chatRef.current;
+    if (!chat) return;
+    const showLatest = () => { chat.scrollTop = chat.scrollHeight; };
+    showLatest();
+    const observer = new ResizeObserver(showLatest);
+    observer.observe(chat);
+    return () => observer.disconnect();
+  }, [messages]);
   return (
-    <div className="-mt-5 flex flex-1 flex-col">
+    <div className="conversation-screen -mt-5 flex min-h-0 flex-1 flex-col">
       {/* Header hijau full-bleed */}
       <div className="-mx-5 rounded-t-[1.5rem] bg-gradient-to-r from-teal-600 to-emerald-500 px-5 py-4">
         <div className="flex items-center gap-3">
@@ -813,9 +836,12 @@ function ConversationScreen({
         </p>
       </div>
 
+      <div className="shrink-0 pt-3"><EmotionPanel result={emotion} compact /></div>
+
       {/* Area chat */}
       <div
-        className="-mx-5 flex min-h-0 flex-1 flex-col gap-4 overflow-hidden px-5 py-4"
+        ref={chatRef}
+        className="conversation-messages -mx-5 flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto px-5 py-3"
       >
         {messages.length === 0 && (
           <div className="flex flex-1 items-center justify-center text-center text-sm font-medium leading-6 text-slate-400">
@@ -851,11 +877,11 @@ function ConversationScreen({
           {isListening ? "Mendengarkan..." : "Balas dengan Suara"}
         </button>
 
-        <div className="rounded-2xl bg-slate-50 p-3">
-          <p className="mb-2 flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-[0.15em] text-slate-500">
-            🔧 Simulasi Input Isyarat (Robot/Server)
-          </p>
-          <div className="flex items-center gap-2">
+        <details className="rounded-2xl bg-slate-50 p-3">
+          <summary className="cursor-pointer text-xs font-semibold text-slate-600">
+            Pesan isyarat manual
+          </summary>
+          <div className="mt-2 flex items-center gap-2">
             <input
               value={recognizedText}
               onChange={(event) => setRecognizedText(event.target.value)}
@@ -876,7 +902,7 @@ function ConversationScreen({
               <SendIcon className="h-5 w-5" />
             </button>
           </div>
-        </div>
+        </details>
 
         {speechStatus && (
           <p className="line-clamp-2 text-center text-[11px] font-medium leading-4 text-slate-400">
@@ -897,21 +923,22 @@ function ConversationBubble({ align, label, text, showAction, onAction }) {
         {label}
       </span>
       <div
-        className={`max-w-[80%] rounded-2xl px-4 py-3 shadow-sm ${
+        className={`flex max-w-[90%] items-center gap-3 rounded-2xl px-4 py-3 shadow-sm ${
           isRight
             ? "bg-gradient-to-br from-teal-600 to-emerald-500 text-white"
             : "bg-white text-slate-900"
         }`}
       >
-        <p className="text-sm font-semibold leading-6">{text}</p>
+        <p className="min-w-0 break-words text-sm font-semibold leading-6">{text}</p>
         {showAction && (
           <button
             type="button"
             onClick={onAction}
-            className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700 transition active:scale-95"
+            title="Bacakan pesan"
+            className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-emerald-50 text-emerald-700 transition active:scale-95"
           >
-            <SpeakerIcon className="h-3.5 w-3.5" />
-            Bacakan
+            <SpeakerIcon className="h-4 w-4" />
+            <span className="sr-only">Bacakan pesan</span>
           </button>
         )}
       </div>

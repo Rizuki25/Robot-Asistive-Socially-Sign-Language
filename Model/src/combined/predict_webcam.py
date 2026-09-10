@@ -225,6 +225,15 @@ def main() -> int:
     parser.add_argument("--mirror", action="store_true", help="Cerminkan tampilan kamera")
     parser.add_argument("--robot_url", default=None,
                         help="Bridge respons ROS, contoh http://192.168.50.2:8091")
+    parser.add_argument("--emotion", action="store_true",
+                        help="Tampilkan ekspresi wajah dari stream yang sama")
+    parser.add_argument("--emotion_model", default=None, help="Path bobot YOLO ekspresi")
+    parser.add_argument("--emotion_device", default="cpu", help="Device YOLO wajah (default: cpu)")
+    parser.add_argument("--emotion_interval", type=float, default=0.2,
+                        help="Interval minimum inferensi wajah dalam detik (default: 0.2)")
+    parser.add_argument("--web_url", default=None,
+                        help="URL backend aplikasi web, contoh http://localhost:3001")
+    parser.add_argument("--web_room", default="demo-ta", help="Room aplikasi web (default: demo-ta)")
     args = parser.parse_args()
 
     robot_client = None
@@ -262,6 +271,28 @@ def main() -> int:
     model.load_state_dict(checkpoint["model_state_dict"])
     model.eval()
     print("[STARTUP] Model siap.", flush=True)
+
+    emotion_worker = None
+    if args.emotion:
+        print("[STARTUP] Memuat model ekspresi wajah...", flush=True)
+        try:
+            from src.common.emotion_recognition import (
+                DEFAULT_MODEL, EmotionWorker, draw_emotion_status,
+            )
+            emotion_worker = EmotionWorker(
+                args.emotion_model or DEFAULT_MODEL,
+                device=args.emotion_device, interval=args.emotion_interval,
+            )
+        except Exception as error:
+            print(f"[ERROR] Model ekspresi gagal disiapkan: {error}", flush=True)
+            return 1
+        print("[STARTUP] Ekspresi siap; satu kamera, respons gerak hanya dari isyarat.", flush=True)
+
+    web_client = None
+    if args.web_url:
+        from src.common.web_results import WebResultClient
+        web_client = WebResultClient(args.web_url, args.web_room, os.environ.get("MODEL_API_KEY", ""))
+        print(f"[STARTUP] Hasil dikirim ke aplikasi web, room: {web_client.room_id}", flush=True)
 
     audio_player = None
     if not args.no_speech:
@@ -337,6 +368,8 @@ def main() -> int:
             audio_player.play(result_label)
         if robot_client is not None:
             robot_client.submit(result_label, confidence)
+        if web_client is not None:
+            web_client.sign(result_label, confidence)
 
     print("\n" + "=" * 60)
     print("AI SIGN LANGUAGE DETECTION (36 KELAS GABUNGAN)")
@@ -346,6 +379,10 @@ def main() -> int:
     print("=" * 60 + "\n")
 
     try:
+        if web_client is not None:
+            web_client.start()
+        if emotion_worker is not None:
+            emotion_worker.start()
         while True:
             ok, frame = capture.read()
             if not ok:
@@ -354,6 +391,10 @@ def main() -> int:
 
             # Keep draining the video while the robot moves; do not classify its motion.
             if robot_client is not None and robot_client.busy:
+                if emotion_worker is not None:
+                    emotion_worker.clear()
+                    if web_client is not None:
+                        web_client.emotion({"status": "paused"})
                 previous = None
                 buffer = []
                 prediction_history.clear()
@@ -370,6 +411,8 @@ def main() -> int:
                     frame = cv2.flip(frame, 1)
                 put_status(frame, "Robot Merespons", "Menunggu respons / jeda sebelum isyarat baru",
                            (0, 215, 255))
+                if emotion_worker is not None:
+                    draw_emotion_status(frame, "Ekspresi: jeda selama robot merespons")
                 cv2.imshow(WINDOW_NAME, frame)
                 if cv2.waitKey(1) & 0xFF in (ord("q"), 27):
                     break
@@ -387,6 +430,10 @@ def main() -> int:
             if (frame.shape[1], frame.shape[0]) != (display_w, display_h):
                 frame = cv2.resize(frame, (display_w, display_h), interpolation=cv2.INTER_LINEAR)
 
+            if emotion_worker is not None:
+                emotion_worker.submit(frame)
+                if web_client is not None:
+                    web_client.emotion(emotion_worker.web_result())
             rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
             hand_results = mp_hands.process(rgb)
             if robot_client is not None:
@@ -532,6 +579,8 @@ def main() -> int:
                 frame = cv2.flip(frame, 1)
 
             put_status(frame, title, detail, color, fps=fps_val)
+            if emotion_worker is not None:
+                draw_emotion_status(frame, emotion_worker.status())
             cv2.imshow(WINDOW_NAME, frame)
 
             key = cv2.waitKey(1) & 0xFF
@@ -539,6 +588,10 @@ def main() -> int:
                 break
 
     finally:
+        if web_client is not None:
+            web_client.close()
+        if emotion_worker is not None:
+            emotion_worker.close()
         capture.release()
         if audio_player is not None:
             audio_player.close()
