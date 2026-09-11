@@ -234,6 +234,8 @@ def main() -> int:
     parser.add_argument("--web_url", default=None,
                         help="URL backend aplikasi web, contoh http://localhost:3001")
     parser.add_argument("--web_room", default="demo-ta", help="Room aplikasi web (default: demo-ta)")
+    parser.add_argument("--record_results", default=None,
+                        help="File JSONL baru untuk visualisasi Manim setelah sesi")
     args = parser.parse_args()
 
     robot_client = None
@@ -356,6 +358,7 @@ def main() -> int:
     fps_val = 0.0
     frame_counter = 0
     fps_start_time = time.time()
+    recorder = None
 
     def lock_result(label: str, confidence: float, source: str) -> None:
         nonlocal result_label, result_confidence, result_countdown, state
@@ -370,6 +373,8 @@ def main() -> int:
             robot_client.submit(result_label, confidence)
         if web_client is not None:
             web_client.sign(result_label, confidence)
+        if recorder is not None:
+            recorder.sign(result_label, confidence)
 
     print("\n" + "=" * 60)
     print("AI SIGN LANGUAGE DETECTION (36 KELAS GABUNGAN)")
@@ -379,6 +384,9 @@ def main() -> int:
     print("=" * 60 + "\n")
 
     try:
+        if args.record_results:
+            from src.common.result_recording import ResultRecorder
+            recorder = ResultRecorder(args.record_results)
         if web_client is not None:
             web_client.start()
         if emotion_worker is not None:
@@ -395,6 +403,8 @@ def main() -> int:
                     emotion_worker.clear()
                     if web_client is not None:
                         web_client.emotion({"status": "paused"})
+                    if recorder is not None:
+                        recorder.emotion({"status": "paused"})
                 previous = None
                 buffer = []
                 prediction_history.clear()
@@ -432,8 +442,11 @@ def main() -> int:
 
             if emotion_worker is not None:
                 emotion_worker.submit(frame)
+                emotion_result = emotion_worker.web_result()
                 if web_client is not None:
-                    web_client.emotion(emotion_worker.web_result())
+                    web_client.emotion(emotion_result)
+                if recorder is not None:
+                    recorder.emotion(emotion_result)
             rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
             hand_results = mp_hands.process(rgb)
             if robot_client is not None:
@@ -597,6 +610,8 @@ def main() -> int:
             audio_player.close()
         mp_hands.close()
         cv2.destroyAllWindows()
+        if recorder is not None:
+            recorder.close()
 
     return 0
 

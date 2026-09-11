@@ -1,0 +1,410 @@
+CATATAN PERUBAHAN
+=================
+Mencatat pekerjaan tanggal 10 September 2026, yaitu semua perubahan setelah:
+    4de7f28  "Initial commit: multimodal emotion fusion + AiNex robot response"
+    9 September 2026, 14:34 WIB
+
+Sudah masuk dua commit:
+    b04445c  isi bagian 1-8 di bawah
+    (commit ini)  bagian 10
+
+
+===============================================================================
+1. RESPONS ROBOT AiNex - sisi robotnya dilengkapi
+===============================================================================
+
+BARU  Servers/ainex_wave_server.py
+      Server HTTP kecil yang dijalankan DI ROBOT. Sebelumnya fusion_webcam.py
+      punya --wave_url tapi tidak ada yang menerima di sisi robot; ini
+      melengkapinya. Menjalankan action group lewat
+      ainex_kinematics.motion_manager.MotionManager, dengan cadangan ke
+      hiwonder.ActionGroupControl dan subprocess, jadi jalan di image Pi 4
+      maupun Pi 5. Membalas HTTP 200 langsung lalu menggerakkan robot di thread
+      terpisah supaya loop fusion tidak ikut menunggu.
+
+UBAH  fusion_webcam.py - tambah --wave_token
+      Mengirim header "Authorization: Bearer <token>".
+
+      Soal "token" yang sempat ditanyakan: AiNex TIDAK butuh token untuk
+      menggerakkan servo. API key di dokumentasi Hiwonder (llm_api_key /
+      vllm_api_key di /home/ubuntu/large_models/config.py) cuma untuk fitur AI
+      Large Model - chat LLM dan text-to-speech. Token di sini adalah shared
+      secret buatan sendiri, sekadar supaya endpoint /wave tidak bisa dipanggil
+      sembarang orang di jaringan yang sama.
+
+
+===============================================================================
+2. SKRIP PENGHITUNG DATASET - ditulis ulang
+===============================================================================
+
+UBAH  webcam/scripts/recheck.py
+
+      Versi lama ada bug: root = Path("fer2013") itu relatif terhadap folder
+      kerja, jadi hanya jalan kalau kebetulan sedang berada di
+      webcam/datasets/. Di tempat lain langsung error.
+
+      Sekarang:
+      - path ditambatkan ke repo lewat Path(__file__), jalan dari mana saja
+      - bisa fer2013, audio, atau folder lain lewat --dir
+      - split dideteksi otomatis, tidak lagi dipatok tiga
+      - hanya menghitung berkas dengan ekstensi yang benar, subfolder diabaikan
+      - keluaran berbentuk tabel + rasio ketimpangan kelas
+
+
+===============================================================================
+3. PERHITUNGAN METRIK - skrip baru
+===============================================================================
+
+BARU  results_calculation.py
+      Menghitung accuracy, precision, recall, F1 untuk mode face, audio, dan
+      fusion. Metrik dihitung langsung dari confusion matrix tanpa
+      scikit-learn (supaya requirements.txt tidak bertambah), dan hasilnya
+      sudah dicocokkan persis dengan sklearn.metrics pada data acak.
+
+      Hasil disimpan ke results/metrics_*.csv dan results/confusion_*.csv.
+      Probabilitas inferensi di-cache supaya sapuan alpha tidak perlu
+      inferensi ulang.
+
+      Angka awal (model lama, sebelum penggabungan dataset):
+          wajah   accuracy 0.6811   macro-F1 0.6547
+          audio   accuracy 0.5939   macro-F1 0.6096
+          fusion  accuracy 0.7734   macro-F1 0.7570  (alpha 0.6)
+
+      Temuan dari sapuan alpha: macro-F1 tertinggi ada di alpha 0.50 (0.7745),
+      bukan 0.60 yang dipakai sekarang. Nilai ALPHA di fusion_webcam.py BELUM
+      diubah - masih 0.6.
+
+      PERBAIKAN BUG (ditemukan saat membandingkan dua model): cache-nya dulu
+      cuma berkunci (modalitas, split). Mengevaluasi model kedua akan
+      memuat ulang hasil model PERTAMA diam-diam dan melaporkannya sebagai
+      hasil model baru. Sekarang kunci cache ikut menyertakan sidik jari
+      model, folder dataset, prefix, dan imgsz.
+
+      Tambahan argumen: --data, --prefix, --tag.
+
+
+===============================================================================
+4. DATASET KDEF - skrip penyusun baru
+===============================================================================
+
+BARU  webcam/scripts/kdefTrain.py
+      Mengubah KDEF dari struktur per-subjek jadi <split>/<kelas>/ siap YOLO.
+      Hasil: webcam/datasets/kdef/, 2936 gambar, 7 kelas, seimbang (~420).
+
+      Keputusan terpenting: SPLIT PER ORANG, BUKAN PER GAMBAR.
+      KDEF memotret 70 orang dalam 2 sesi, jadi folder AF01 dan BF01 adalah
+      orang yang sama. Split acak per gambar akan menaruh wajah yang sama di
+      train dan test sekaligus, dan akurasi test-nya jadi tinggi palsu.
+      Sudah diverifikasi: irisan subjek antar-split = 0, dan gender seimbang
+      (24/24, 5/5, 6/6).
+
+      Wajah dipotong Haar + padding 20%, sama seperti yang dilakukan
+      fusion_webcam.py saat inferensi.
+
+      Tiga cacat data yang ditangani:
+      - 4 gambar KDEF asli isinya hitam polos, dibuang otomatis
+      - 2 nama berkas salah (AF31V, AM31H), diperbaiki lewat tabel ERRATA
+      - 1.7% deteksi Haar adalah positif palsu (kotak kecil di leher/bahu/
+        latar). Sekarang kotaknya divalidasi terhadap framing KDEF, dan yang
+        ditolak memakai kotak cadangan per sudut hasil kalibrasi.
+
+
+===============================================================================
+5. PENGGABUNGAN DATASET DAN MODEL BARU
+===============================================================================
+
+BARU  webcam/scripts/merge_datasets.py
+      Menggabungkan FER2013 + KDEF jadi webcam/datasets/combined/ (44862
+      gambar).
+
+      Dua masalah yang ditangani:
+      - Timpang 14.3 : 1. KDEF diulang 4x di train saja, porsinya naik dari
+        6.6% ke 21.9%.
+      - Domain beda. Semua dijadikan grayscale supaya model tidak memakai
+        warna sebagai jalan pintas menebak asal dataset.
+
+      Ketimpangan kelas turun dari 16.36x jadi 5.64x.
+      disgust di train naik dari 436 jadi 1580 gambar.
+
+BARU  webcam/models/merged_baseline/
+      Model hasil latih gabungan, 20 epoch, RTX 4060, sekitar 50 menit.
+      Bobot: webcam/models/merged_baseline/weights/best.pt
+      (best.pt dan last.pt isinya identik, epoch terbaik = epoch terakhir)
+
+      Hasil, diukur di test set masing-masing sumber secara TERPISAH:
+
+          model                 FER2013 acc  FER2013 F1  KDEF acc  KDEF F1
+          baseline (FER2013)         0.6811      0.6547    0.5238   0.4630
+          gabungan (FER+KDEF)        0.6731      0.6564    0.9306   0.9296
+
+      Praktis impas di domain lama, naik 40.7pp di domain baru.
+      F1 disgust di test FER2013 naik 0.6000 -> 0.6731.
+      Test KDEF berisi 12 orang yang tidak ikut dilatih, jadi angkanya
+      person-independent.
+
+
+===============================================================================
+6. PERUBAHAN fusion_webcam.py
+===============================================================================
+
+UBAH  Input grayscale, AKTIF secara default (GRAYSCALE_INPUT = True)
+      Potongan wajah diubah ke grayscale sebelum masuk model, menyamakannya
+      dengan data latih. Diukur pada 504 gambar test KDEF: akurasi naik dari
+      0.8770 (berwarna) ke 0.9306 (grayscale), tanpa latih ulang.
+
+      Yang berubah hanya gambar yang masuk model - tampilan di layar tetap
+      berwarna (sudah diverifikasi; crop_face mengembalikan view ke frame,
+      tapi cvtColor mengalokasi array baru sehingga frame asli tidak tersentuh).
+
+      Bisa dimatikan lewat konstanta GRAYSCALE_INPUT di kode, atau
+      --no_grayscale saat menjalankan. Mode aktif terlihat di overlay
+      sebagai input=gray / input=warna.
+
+UBAH  Netral tidak lagi bisa jadi bagian emosi majemuk
+      Kalau salah satu dari dua kelas teratas adalah netral, keputusan
+      dipaksa jadi TUNGGAL memakai kelas teratas. Tidak ada lagi label
+      seperti "Sedih-Netral". Diatur lewat konstanta NO_COMPOUND.
+
+      Dampaknya pada distribusi keputusan:
+          keputusan       sebelum              sesudah
+          TUNGGAL         72.3% (acc 0.8873)   79.1% (acc 0.8557)
+          MAJEMUK         16.0%                 9.1%
+          TIDAK YAKIN     11.7%                11.7%
+
+      Keputusan majemuk turun dari 16.0% ke 9.1% - 43% di antaranya ternyata
+      pasangan yang melibatkan netral. Akurasi subset TUNGGAL ikut turun
+      karena kasus-kasus ambigu yang dulu di-hedge sebagai majemuk sekarang
+      dipaksa memilih satu label.
+
+UBAH  Dokumentasi kedua fitur di atas ditulis di docstring paling atas.
+
+
+===============================================================================
+7. PENATAAN ULANG FOLDER
+===============================================================================
+
+PINDAH  tempKDEFAKDEF/KDEF_and_AKDEF/  ->  webcam/datasets/KDEF_and_AKDEF/
+PINDAH  tempKDEFAKDEF/kdefTrain.py     ->  webcam/scripts/kdefTrain.py
+HAPUS   folder tempKDEFAKDEF/ (sudah kosong)
+
+      Sekarang sejalan dengan tata letak yang sudah ada: data mentah di
+      <modalitas>/datasets/, skrip di <modalitas>/scripts/.
+
+      Efek sampingnya penting: webcam/datasets/ ada di .gitignore, jadi 512 MB
+      gambar KDEF otomatis tidak ikut ter-upload ke GitHub. Waktu masih di
+      tempKDEFAKDEF/ di root, folder itu tidak terlindungi .gitignore.
+
+      Semua referensi path di kdefTrain.py, README.md, dan merge_datasets.py
+      sudah diperbarui. Sudah dites: skrip tetap jalan dari lokasi barunya.
+
+
+===============================================================================
+8. DOKUMENTASI
+===============================================================================
+
+BARU  CLAUDE.md
+      Instruksi untuk Claude Code. Aturan utamanya: JANGAN menjalankan
+      training sendiri - siapkan skripnya, lalu serahkan perintahnya supaya
+      progress bar-nya bisa dipantau langsung di terminal sendiri.
+      Juga mencatat bahwa mesin ini punya RTX 4060 sementara skrip lama
+      mengunci device='cpu'.
+
+BARU  DATASETS.txt
+      Rincian semua dataset yang dipakai, dihitung dari isi folder. Ada bagian
+      khusus di bawah untuk hal-hal yang TIDAK bisa dipastikan dari berkas dan
+      perlu dicek sendiri (sumber unduhan, versi, lisensi KDEF).
+
+BARU  CHANGELOG.txt (berkas ini)
+
+UBAH  README.md
+      Bagian baru: sisi robot AiNex, dataset KDEF, penggabungan dataset,
+      evaluasi metrik, catatan GPU.
+
+UBAH  .gitignore
+      Menambahkan results/cache/ dan /yolo26n.pt.
+
+
+===============================================================================
+9. TEMUAN YANG BELUM DITINDAKLANJUTI
+===============================================================================
+
+- ALPHA di fusion_webcam.py masih 0.6, padahal sapuan menunjukkan 0.50 lebih
+  baik (macro-F1 0.7745 vs 0.7570). Belum diubah.
+
+- Skrip lama masih mengunci device='cpu' padahal ada RTX 4060:
+  training_yolo_.py, train_audio_cnn.py, results_calculation.py,
+  fusion_webcam.py. Baseline FER2013 karena itu butuh 2.4 jam untuk 20 epoch.
+  Hanya merge_datasets.py yang sudah punya --device auto.
+
+- Training memakai workers=0 (warisan training_yolo_.py), sehingga pemuatan
+  gambar jadi hambatan dan GPU banyak menganggur: 141 detik/epoch, padahal
+  bisa jauh lebih cepat.
+
+- Kelas surprise di dataset audio cuma 192 sampel (CREMA-D tidak punya kelas
+  surprise). Ketimpangan 7.62x ini belum ditangani.
+
+
+===============================================================================
+10. RESPONS LAMBAIAN DIMATIKAN
+===============================================================================
+
+UBAH  fusion_webcam.py
+      Pemicu lambaian di loop utama dikomentari, jadi sistem hanya mengenali
+      ekspresi tanpa menggerakkan robot.
+
+      Ditambah juga konstanta WAVE_ENABLED = False di bagian KONFIGURASI.
+      Alasannya: kalau cuma pemicunya yang dikomentari, indikator "ROBOT: siap
+      lambai" di overlay dan pesan "[robot] Wave -> POST ..." saat start tetap
+      muncul, karena keduanya bergantung pada robot.enabled - bukan pada apakah
+      pemicunya benar-benar jalan. Tampilannya jadi menyesatkan.
+
+      Menghidupkan lagi perlu DUA langkah: ubah WAVE_ENABLED jadi True, DAN
+      hapus tanda '#' pada blok pemicunya. Keduanya sudah ditulis di komentar
+      masing-masing.
+
+      Tidak ada yang dihapus. RobotController, --wave_url, --wave_token, dan
+      Servers/ainex_wave_server.py masih utuh, cuma tidak pernah dipanggil.
+
+UBAH  README.md - status "DIMATIKAN" ditulis di bagian atas dan di bagian
+      "Respons robot: sisi robot", lengkap dengan cara menghidupkannya.
+
+UBAH  DATASETS.txt - baris nama dan NIM dihapus, menyesuaikan dengan
+      penghapusan data pribadi yang sudah dilakukan di README.md.
+
+      CATATAN: nama dan NIM masih ada di docstring fusion_webcam.py baris 9 dan
+      fusion/fusion_test_webcam.py baris 9. Keduanya bawaan commit pertama,
+      belum diubah - putuskan sendiri mau dihapus atau tidak.
+
+
+===============================================================================
+11. PEMBERSIHAN DAN PENATAAN (11 September 2026)
+===============================================================================
+
+11a. Kode berulang dipindah ke common.py
+-----------------------------------------
+BARU  common.py
+      EMOTIONS, EMOTIONS_ID, parameter MFCC (SR/DURATION/N_MFCC), arsitektur
+      AudioCNN, dan helper MFCC. Sebelumnya:
+          EMOTIONS       ditulis ulang di 5 berkas
+          AudioCNN       ditulis ulang di 3 berkas
+          SR/DURATION/N_MFCC   di 3 berkas
+          ekstraksi MFCC       di 3 berkas
+
+      Yang paling berbahaya AudioCNN: arsitekturnya harus identik antara skrip
+      yang melatih dan yang memuat bobot. results_calculation.py bahkan sempat
+      memakai nn.Sequential polos dan harus membuang prefix 'net.' sendiri dari
+      state_dict - beda jalur untuk hal yang sama.
+
+      Impor torch ditaruh di dalam fungsi, jadi skrip yang cuma butuh EMOTIONS
+      (merge_datasets.py) tidak ikut menunggu torch dimuat.
+
+      Diverifikasi: metrik SEBELUM dan SESUDAH refactor sama persis.
+          wajah   accuracy 0.6811   macro-F1 0.6547
+          audio   accuracy 0.5939   macro-F1 0.6096
+
+11b. Berkas dan folder duplikat dihapus
+----------------------------------------
+      webcam/datasets/fer2013/splittingtest.py
+          identik byte-per-byte dengan webcam/scripts/splittingtest.py
+      yolo26n.pt di root
+          identik dengan webcam/models/yolo26n.pt
+      webcam/results/classify/runs/emotion/fer2013_baseline-2/
+          identik dengan webcam/models/fer2013_baseline-2/, dan KEDUANYA
+          terlacak git - jadi bobot yang sama tersimpan dua kali
+      webcam/results/classify/runs/emotion/fer2013_baseline/
+          run yang gagal, cuma berisi args.yaml dengan weights/ kosong
+      webcam/results/classify/val-2/
+          identik dengan val/
+      results/metrics_face_test.csv dan confusion_face_test.*
+          duplikat dari face_base_fer_test, sisa sebelum ada --tag
+
+11c. Struktur folder
+---------------------
+PINDAH  runs/classify/runs/emotion/merged_baseline/ -> webcam/models/merged_baseline/
+        Sekarang sejajar dengan fer2013_baseline-2. Folder runs/ dimasukkan ke
+        .gitignore karena itu keluaran mentah ultralytics; model yang benar-benar
+        dipakai disalin ke webcam/models/.
+
+BARU    archive/ (gitignored, ada README.txt di dalamnya)
+        Empat skrip yang sudah digantikan dipindah ke sini, namanya dirapikan
+        dan PROJECT_ROOT-nya disesuaikan supaya tetap bisa dijalankan:
+            webcam/scripts/TEST (last).py  -> archive/test_yolo_fer2013.py
+            webcam/scripts/webcamTest.py   -> archive/webcam_test.py
+            audio/scripts/check_crema-d.py -> archive/check_crema_d.py
+            fusion/fusion_test_webcam.py   -> archive/fusion_test_webcam.py
+        Folder fusion/ jadi kosong dan ikut dihapus.
+
+BERSIH  __pycache__/ dan *.cache dihapus dari disk.
+
+11d. training_yolo_.py diberi argparse
+---------------------------------------
+      Versi lama langsung melatih begitu dijalankan, tanpa argumen apa pun.
+      Artinya salah ketik sedikit - termasuk `--help` - langsung memulai
+      training 20 epoch. Ini benar-benar terjadi saat pembersihan ini dan
+      harus dihentikan di tengah jalan.
+
+      Sekarang: ada argparse, `--help` aman, dan training baru mulai kalau
+      diberi --yes. Tambahan --device auto (dulu terkunci 'cpu' padahal ada
+      RTX 4060), --epochs, --batch, --workers, --data, --name.
+
+      Ini menyelesaikan dua poin di bagian 9: device terkunci cpu dan
+      workers=0 sekarang bisa diatur dari argumen.
+
+11e. train_audio_cnn.py disamakan dengan training_yolo_.py
+-----------------------------------------------------------
+      Dulu: langsung melatih begitu dijalankan, dan EPOCHS / BATCH / DEVICE
+      harus diubah dengan mengedit isi berkasnya.
+
+      Sekarang: argparse penuh, `--help` aman, dan training baru mulai kalau
+      diberi --yes. Argumen: --data --out --epochs --batch --lr --workers
+      --device. Pesan saat --yes kelupaan menampilkan perintah lengkap yang
+      tinggal disalin, sudah termasuk argumen yang barusan dipakai.
+
+      --device default 'auto', jadi memakai GPU kalau ada. Dulu terkunci 'cpu'.
+      Nilainya 'cuda'/'cpu' untuk torch, beda dengan ultralytics yang memakai
+      indeks '0'.
+
+      --workers diukur langsung di mesin ini, memuat 1024 sampel:
+          workers 0 : 12.8 detik
+          workers 4 : 10.4 detik   <- paling cepat
+          workers 8 : 18.1 detik
+      Windows memakai spawn, bukan fork, jadi ongkos membuat proses besar dan
+      worker yang terlalu banyak malah memperlambat. Angka ini menggantikan
+      saran awal "--workers 8" yang ternyata salah.
+
+      Perilaku penyimpanan tidak berubah: bobot ditimpa tiap kali val accuracy
+      membaik, jadi best_audio_cnn.pt selalu model terbaik. Perlu diingat latih
+      ulang MENIMPA model yang sekarang dipakai - pakai --out kalau tidak mau.
+
+      Dengan ini bagian 9 soal 'skrip lama mengunci device=cpu' tinggal
+      menyisakan fusion_webcam.py dan results_calculation.py, keduanya jalur
+      inferensi, bukan training.
+
+11f. results_figures.py - hasil dalam bentuk gambar
+----------------------------------------------------
+BARU  results_figures.py
+      Merender hasil evaluasi jadi dua PNG/JPG siap tempel ke laporan, bukan
+      lagi cuma keluaran terminal.
+
+      Bentuk grafik dipilih menurut tugas datanya, bukan selera:
+        - sebelum/sesudah per item -> dumbbell, satu hue biru dua shade
+        - dua metrik berdampingan  -> batang berkelompok, biru + oranye
+        - magnitudo dalam grid     -> heatmap, satu hue biru 100->700
+        - tren terhadap parameter  -> garis satu seri (tanpa legenda)
+
+      Paletnya diambil dari palet rujukan yang sudah divalidasi dan dicek ulang
+      dengan validator: pasangan kategorikal biru/oranye lolos semua gate
+      (CVD Delta E 24.7), pasangan shade biru lolos gate ordinal.
+
+      Gambarnya diperiksa dengan mata setelah dirender, bukan cuma dianggap
+      benar karena kodenya jalan. Empat masalah tata letak ketemu dan
+      diperbaiki: judul panel kanan terpotong, legenda menutupi label nilai,
+      keterangan puncak menimpa kurva dan judul, serta dua titik dumbbell yang
+      saling menutupi waktu nilainya nyaris sama.
+
+      Satu keputusan dibatalkan setelah dilihat hasilnya: rencana memakai
+      'emphasis' (fusion berwarna, sisanya abu-abu) ternyata membuat batang
+      abu-abunya terlihat lebih berat daripada yang mau ditonjolkan. Diganti
+      jadi dua warna kategorikal biasa - panjang batangnya sendiri sudah cukup
+      menunjukkan fusion menang.
+

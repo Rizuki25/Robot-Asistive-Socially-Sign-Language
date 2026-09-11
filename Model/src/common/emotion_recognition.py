@@ -9,7 +9,7 @@ import numpy as np
 
 
 DEFAULT_MODEL = Path(__file__).resolve().parents[3] / (
-    "Emotion/webcam/models/fer2013_baseline-2/weights/best.pt"
+    "Emotion/webcam/models/merged_baseline/weights/best.pt"
 )
 EMOTIONS_ID = {
     "angry": "Marah", "disgust": "Jijik", "fear": "Takut",
@@ -29,7 +29,8 @@ def emotion_label(probabilities, names):
     if confidence < 0.40:
         return "Belum yakin", confidence
     label = EMOTIONS_ID[names[first]]
-    if confidence - float(probabilities[second]) < 0.20:
+    if (confidence - float(probabilities[second]) < 0.20
+            and "neutral" not in (names[first], names[second])):
         label += "-" + EMOTIONS_ID[names[second]]
     return label, confidence
 
@@ -128,6 +129,10 @@ class EmotionWorker:
         px, py = int(w * 0.20), int(h * 0.20)
         crop = frame[max(0, y - py):min(frame.shape[0], y + h + py),
                      max(0, x - px):min(frame.shape[1], x + w + px)]
+        # Match FER2013 + KDEF training and Emotion/fusion_webcam.py.
+        # Keep three channels for YOLO without modifying the displayed frame.
+        crop = cv2.cvtColor(cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY),
+                            cv2.COLOR_GRAY2BGR)
         results = self.model.predict(
             crop, imgsz=224, device=self.device, verbose=False
         )

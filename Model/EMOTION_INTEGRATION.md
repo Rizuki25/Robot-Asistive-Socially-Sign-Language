@@ -1,5 +1,14 @@
 # Satu kamera untuk isyarat dan ekspresi wajah
 
+Untuk webcam laptop, jalankan dari folder `Model`:
+
+```powershell
+python -u -m src.combined.predict_webcam --config configs/combined_90.yaml --camera_index 0 --no_speech --emotion
+```
+
+`--emotion` menampilkan hasil pengenalan emosi wajah tanpa kerangka wajah.
+Kerangka tangan untuk pengenalan isyarat tetap ditampilkan.
+
 Jalankan dari PowerShell laptop, folder `Model`, setelah stream kamera robot aktif.
 Hentikan program `Emotion/fusion_webcam.py` dan program isyarat lama dahulu.
 
@@ -17,14 +26,21 @@ sama dengan robot. Ekspresi tidak memicu gerakan pada tahap integrasi ini.
 yang sama. Frame disalin sebelum skeleton/overlay digambar. BiLSTM tetap memakai
 preprocessing, urutan landmark, dan konfigurasi yang sama. Mirror hanya tampilan.
 
-YOLO menerima crop wajah terbesar dengan padding 20%, ukuran inferensi 224,
+YOLO menerima crop wajah terbesar dengan padding 20%, input grayscale tiga kanal,
+ukuran inferensi 224,
 dan nama kelas dari checkpoint. Confidence di bawah 0.40 ditampilkan sebagai
 `Belum yakin`; selisih dua kelas teratas di bawah 0.20 menghasilkan label majemuk,
-sesuai aturan visual program Emotion. Ini label ekspresi prediksi model.
+sesuai aturan visual program Emotion. Jika salah satu dari dua kelas teratas
+adalah Netral, hasil memakai kelas teratas saja (tidak ada `Sedih-Netral`).
+Ini label ekspresi prediksi model.
 
-Default model: `Emotion/webcam/models/fer2013_baseline-2/weights/best.pt`,
+Default model: `Emotion/webcam/models/merged_baseline/weights/best.pt`
+(hasil training FER2013 + KDEF),
 di-resolve terhadap lokasi source, bukan current working directory.
 Override dengan `--emotion_model PATH` (path relatif mengikuti working directory).
+Command `--emotion` di atas langsung memakai model baru ini; tidak perlu
+menjalankan `Emotion/fusion_webcam.py` atau server lambaian dari folder Emotion.
+Grayscale hanya untuk input model wajah; tampilan kamera tetap berwarna.
 
 Worker wajah memakai CPU (`--emotion_device cpu`) dengan interval minimum
 0.2 detik (`--emotion_interval 0.2`), paling banyak satu frame tertunda yang

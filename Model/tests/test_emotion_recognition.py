@@ -46,6 +46,40 @@ class EmotionTests(unittest.TestCase):
         self.assertEqual(int(worker._pending[0].max()), 10)
         worker.close()
 
+    def test_neutral_never_forms_compound_in_either_top_position(self):
+        names = ["sad", "neutral", "happy", "angry", "fear", "disgust", "surprise"]
+        for probabilities, expected in [
+            ([0.48, 0.47, 0.01, 0.01, 0.01, 0.01, 0.01], "Sedih"),
+            ([0.47, 0.48, 0.01, 0.01, 0.01, 0.01, 0.01], "Netral"),
+        ]:
+            with self.subTest(expected=expected):
+                label, _ = emotion_label(probabilities, names)
+                self.assertEqual(label, expected)
+
+    def test_face_input_is_grayscale_without_changing_camera_frame(self):
+        worker = self.make_worker()
+        worker.detector.detectMultiScale.return_value = [(20, 20, 80, 80)]
+        probabilities = Mock()
+        probabilities.cpu.return_value.numpy.return_value = np.array(
+            [0.01, 0.01, 0.01, 0.94, 0.01, 0.01, 0.01])
+        worker.model.predict.return_value = [
+            SimpleNamespace(probs=SimpleNamespace(data=probabilities))]
+        frame = np.zeros((120, 120, 3), dtype=np.uint8)
+        frame[:, :, 2] = 255
+        original = frame.copy()
+        try:
+            label, _ = worker._predict(frame)
+            crop = worker.model.predict.call_args.args[0]
+            self.assertEqual(label, "Senang")
+            self.assertEqual(crop.shape, (112, 112, 3))
+            np.testing.assert_array_equal(crop[:, :, 0], crop[:, :, 1])
+            np.testing.assert_array_equal(crop[:, :, 1], crop[:, :, 2])
+            self.assertGreater(int(crop.min()), 0)
+            self.assertLess(int(crop.max()), 255)
+            np.testing.assert_array_equal(frame, original)
+        finally:
+            worker.close()
+
     def test_old_result_expires(self):
         worker = self.make_worker()
         worker._result = (time.monotonic() - 2, "Senang", 0.9)
