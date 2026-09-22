@@ -67,6 +67,19 @@ pip install -r requirements.txt
 
 ## Menjalankan
 
+Emosi wajah saja dengan model FER2013 + KDEF dan kerangka wajah opsional
+(jalankan dari folder `Emotion`):
+
+```powershell
+python fusion_webcam.py --camera 0 --no_speech --no_wave --visual_model webcam/models/merged_baseline/weights/best.pt --face_mesh
+```
+
+`--face_mesh` memerlukan MediaPipe (environment Model memakai
+`mediapipe==0.10.11`). Tanpa opsi ini, MediaPipe tidak dimuat. Kerangka hanya
+visualisasi satu wajah, digambar setelah inferensi emosi, dan menambah beban
+komputasi. Hapus `--face_mesh` untuk kembali ke tampilan biasa. Fitur ini tidak
+mengaktifkan Face Mesh pada program gabungan di folder `Model`.
+
 Webcam laptop + mikrofon:
 ```bash
 python fusion_webcam.py

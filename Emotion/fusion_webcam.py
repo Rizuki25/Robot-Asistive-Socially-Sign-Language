@@ -727,6 +727,8 @@ def parse_args(argv=None):
                        help="Ambang keyakinan minimum (default: %.2f)." % TAU_CONF)
 
     g_mdl = p.add_argument_group("Model")
+    g_mdl.add_argument('--face_mesh', '--face-mesh', action='store_true',
+                       help="Tampilkan kerangka MediaPipe wajah (opsional, menambah beban komputasi).")
     # default=None supaya konstanta GRAYSCALE_INPUT di atas yang menentukan
     # kalau tidak ada argumen yang dipakai.
     g_mdl.add_argument('--grayscale', dest='grayscale', action='store_true',
@@ -881,7 +883,12 @@ def main(argv=None):
     else:
         print("Berjalan! Posisikan wajah ke kamera & bicara ke mikrofon.\n")
 
+    face_mesh = None
     try:
+        if args.face_mesh:
+            from face_mesh_overlay import FaceMeshOverlay
+            face_mesh = FaceMeshOverlay()
+            print("[visual] Kerangka wajah aktif.")
         while True:
             if streaming:
                 ret, frame, frame_id = cap.read_with_id()
@@ -926,6 +933,10 @@ def main(argv=None):
             p_final = decision_level_fusion(p_visual, p_audio, ALPHA)
             result = compound_emotion_decision(p_final, TAU, TAU_CONF)
 
+            # Draw only after emotion inference has consumed the clean image.
+            if face_mesh is not None:
+                face_mesh.draw(frame)
+
             now = time.time()
             fps = 0.9 * fps + 0.1 * (1.0 / max(now - prev_t, 1e-6))
             prev_t = now
@@ -955,6 +966,8 @@ def main(argv=None):
     except KeyboardInterrupt:
         print("\nDihentikan pengguna.")
     finally:
+        if face_mesh is not None:
+            face_mesh.close()
         worker.stop()
         cap.release()
         cv2.destroyAllWindows()
