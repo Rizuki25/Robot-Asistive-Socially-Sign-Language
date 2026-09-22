@@ -31,6 +31,7 @@ import yaml
 
 from src.common.utils import get_device
 from src.common.robot_response import RobotResponseClient
+from src.common.latency_recording import LatencyRecorder
 from src.combined.model import CombinedBiLSTM
 from src.combined.predict_video import (
     MODEL_ROOT,
@@ -236,6 +237,10 @@ def main() -> int:
     parser.add_argument("--web_room", default="demo-ta", help="Room aplikasi web (default: demo-ta)")
     parser.add_argument("--record_results", default=None,
                         help="File JSONL baru untuk visualisasi Manim setelah sesi")
+    parser.add_argument("--latency_csv", default=None,
+                        help="File CSV baru untuk tabel pengujian latensi")
+    parser.add_argument("--latency_label", default=None,
+                        help="Kelas aktual untuk seluruh percobaan sesi, misalnya Halo")
     args = parser.parse_args()
 
     robot_client = None
@@ -257,6 +262,8 @@ def main() -> int:
 
     encoder_path = resolve_input_path(os.path.join(config["paths"]["processed"], "label_encoder.json"))
     num_classes, class_names = load_label_encoder(encoder_path)
+    if args.latency_label is not None and args.latency_label not in class_names:
+        parser.error("--latency_label harus salah satu kelas: " + ", ".join(class_names))
     device = get_device()
 
     print("[STARTUP] Membuat model pada perangkat inferensi...", flush=True)
@@ -359,9 +366,14 @@ def main() -> int:
     frame_counter = 0
     fps_start_time = time.time()
     recorder = None
+    latency = None
 
     def lock_result(label: str, confidence: float, source: str) -> None:
         nonlocal result_label, result_confidence, result_countdown, state
+        measurement = latency.finish(label, confidence, source)
+        if measurement is not None:
+            print(f"[LATENSI] {label}: {measurement['latensi_ms']:.1f} ms"
+                  f" | {measurement['status']}")
         result_label = label
         result_confidence = confidence
         result_countdown = args.result_frames
@@ -384,6 +396,7 @@ def main() -> int:
     print("=" * 60 + "\n")
 
     try:
+        latency = LatencyRecorder(args.latency_csv, args.latency_label)
         if args.record_results:
             from src.common.result_recording import ResultRecorder
             recorder = ResultRecorder(args.record_results)
@@ -406,6 +419,7 @@ def main() -> int:
                     if recorder is not None:
                         recorder.emotion({"status": "paused"})
                 previous = None
+                latency.cancel()
                 buffer = []
                 prediction_history.clear()
                 quiet_frames = 0
@@ -460,6 +474,7 @@ def main() -> int:
             # ---------------- STATE MACHINE ----------------
             if state == "WAITING":
                 if present and motion >= args.motion_threshold:
+                    latency.start()
                     state = "RECORDING"
                     buffer = [current.copy()]
                     quiet_frames = 0
@@ -562,11 +577,14 @@ def main() -> int:
             else:  # REARM
                 # Menunggu gerakan nyata baru. Jika tangan/jari diam di layar, tetap di REARM!
                 if present and motion >= args.motion_threshold:
+                    if rearm_motion_count == 0:
+                        latency.start()
                     rearm_motion_count += 1
                     rearm_motion_buffer.append(current.copy())
                 else:
                     rearm_motion_count = 0
                     rearm_motion_buffer = []
+                    latency.cancel()
 
                 if rearm_motion_count >= args.rearm_motion_frames:
                     state = "RECORDING"
@@ -592,6 +610,13 @@ def main() -> int:
                 frame = cv2.flip(frame, 1)
 
             put_status(frame, title, detail, color, fps=fps_val)
+            if latency.latest is not None:
+                last = latency.latest
+                cv2.rectangle(frame, (0, 70), (display_w, 94), (25, 25, 25), -1)
+                cv2.putText(frame,
+                            f"Latensi terakhir: {last['latensi_ms']:.1f} ms | {last['prediksi']} | {last['status']}",
+                            (14, 87), cv2.FONT_HERSHEY_SIMPLEX, 0.42,
+                            (0, 255, 180), 1, cv2.LINE_AA)
             if emotion_worker is not None:
                 draw_emotion_status(frame, emotion_worker.status())
             cv2.imshow(WINDOW_NAME, frame)
@@ -601,6 +626,8 @@ def main() -> int:
                 break
 
     finally:
+        if latency is not None:
+            latency.close()
         if web_client is not None:
             web_client.close()
         if emotion_worker is not None:

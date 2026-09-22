@@ -1,0 +1,7 @@
+﻿no,kelas_gestur,prediksi,waktu_mulai_deteksi_ms,waktu_prediksi_ms,latensi_ms,status,confidence,sumber
+1,Baik,Baik,3145.97,6021.402,2875.432,Sesuai,0.998645,Voting stabil (100%)
+2,Baik,Baik,8811.484,11316.636,2505.152,Sesuai,0.996993,Voting stabil (100%)
+3,Baik,Baik,15045.895,17518.536,2472.642,Sesuai,0.999403,Voting stabil (100%)
+4,Baik,Kamu,19962.484,22432.903,2470.42,Tidak sesuai,0.99196,Voting stabil (100%)
+5,Baik,Baik,25005.768,27478.676,2472.908,Sesuai,0.999386,Voting stabil (100%)
+6,Baik,Baik,29912.282,32393.984,2481.702,Sesuai,0.999516,Voting stabil (100%)

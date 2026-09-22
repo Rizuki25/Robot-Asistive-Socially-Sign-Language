@@ -1,0 +1,6 @@
+﻿no,kelas_gestur,prediksi,waktu_mulai_deteksi_ms,waktu_prediksi_ms,latensi_ms,status,confidence,sumber
+1,Belajar,Belajar,2429.747,4982.797,2553.051,Sesuai,0.999633,Voting stabil (100%)
+2,Belajar,Belajar,7827.471,10303.592,2476.121,Sesuai,0.999575,Voting stabil (100%)
+3,Belajar,Belajar,12522.601,14994.252,2471.651,Sesuai,0.999502,Voting stabil (100%)
+4,Belajar,Belajar,17429.658,19914.513,2484.856,Sesuai,0.999396,Voting stabil (100%)
+5,Belajar,Belajar,22766.143,25221.607,2455.464,Sesuai,0.999375,Voting stabil (100%)

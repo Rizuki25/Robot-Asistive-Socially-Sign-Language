@@ -1,0 +1,6 @@
+﻿no,kelas_gestur,prediksi,waktu_mulai_deteksi_ms,waktu_prediksi_ms,latensi_ms,status,confidence,sumber
+1,Saya,Saya,2412.835,5077.822,2664.987,Sesuai,0.999735,Voting stabil (100%)
+2,Saya,Saya,8295.545,10774.401,2478.855,Sesuai,0.999756,Voting stabil (100%)
+3,Saya,Saya,13517.547,15997.657,2480.11,Sesuai,0.999734,Voting stabil (100%)
+4,Saya,Saya,18873.814,21358.664,2484.85,Sesuai,0.999775,Voting stabil (100%)
+5,Saya,Saya,24233.918,26724.037,2490.119,Sesuai,0.999721,Voting stabil (100%)

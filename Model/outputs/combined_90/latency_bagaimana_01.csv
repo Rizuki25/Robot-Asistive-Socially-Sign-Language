@@ -1,0 +1,9 @@
+﻿no,kelas_gestur,prediksi,waktu_mulai_deteksi_ms,waktu_prediksi_ms,latensi_ms,status,confidence,sumber
+1,Bagaimana,Apa,1048.641,3526.772,2478.131,Tidak sesuai,0.954693,Voting stabil (100%)
+2,Bagaimana,Apa,8150.471,10608.292,2457.821,Tidak sesuai,0.920849,Voting stabil (100%)
+3,Bagaimana,Bagaimana,13493.598,15975.897,2482.299,Sesuai,0.998309,Voting stabil (100%)
+4,Bagaimana,Bagaimana,18324.08,20800.735,2476.656,Sesuai,0.825541,Voting stabil (100%)
+5,Bagaimana,Apa,23717.598,26207.79,2490.193,Tidak sesuai,0.998738,Voting stabil (100%)
+6,Bagaimana,Bagaimana,28834.541,31289.801,2455.26,Sesuai,0.999181,Voting stabil (100%)
+7,Bagaimana,Bagaimana,34152.521,36614.614,2462.092,Sesuai,0.999202,Voting stabil (100%)
+8,Bagaimana,Bagaimana,39306.071,41788.15,2482.078,Sesuai,0.99952,Voting stabil (100%)

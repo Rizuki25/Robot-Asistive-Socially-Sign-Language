@@ -1,0 +1,6 @@
+﻿no,kelas_gestur,prediksi,waktu_mulai_deteksi_ms,waktu_prediksi_ms,latensi_ms,status,confidence,sumber
+1,Kita,Kita,2556.498,5183.0,2626.502,Sesuai,0.999119,Voting stabil (100%)
+2,Kita,Kita,7797.11,10267.568,2470.458,Sesuai,0.998288,Voting stabil (100%)
+3,Kita,Kita,12532.389,14993.788,2461.399,Sesuai,0.867431,Voting stabil (100%)
+4,Kita,Kita,17495.211,19953.53,2458.319,Sesuai,0.997694,Voting stabil (100%)
+5,Kita,Kita,24192.572,26646.336,2453.764,Sesuai,0.99787,Voting stabil (100%)

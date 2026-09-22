@@ -1,0 +1,6 @@
+﻿no,kelas_gestur,prediksi,waktu_mulai_deteksi_ms,waktu_prediksi_ms,latensi_ms,status,confidence,sumber
+1,Melihat,Melihat,2780.028,5392.122,2612.095,Sesuai,0.997435,Voting stabil (100%)
+2,Melihat,Melihat,8137.317,10613.133,2475.815,Sesuai,0.957374,Voting stabil (100%)
+3,Melihat,Melihat,13500.436,15967.921,2467.485,Sesuai,0.996427,Voting stabil (100%)
+4,Melihat,Melihat,18373.362,20852.166,2478.803,Sesuai,0.998163,Voting stabil (100%)
+5,Melihat,Melihat,23662.989,26147.911,2484.923,Sesuai,0.993122,Voting stabil (100%)

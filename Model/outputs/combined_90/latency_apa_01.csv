@@ -1,0 +1,13 @@
+﻿no,kelas_gestur,prediksi,waktu_mulai_deteksi_ms,waktu_prediksi_ms,latensi_ms,status,confidence,sumber
+1,Apa,Bagaimana,134.082,3098.187,2964.105,Tidak sesuai,0.986715,Voting stabil (100%)
+2,Apa,O,5021.789,7293.213,2271.424,Tidak sesuai,0.98852,Voting stabil (100%)
+3,Apa,E,9345.305,12089.801,2744.496,Tidak sesuai,0.844467,Voting stabil (80%)
+4,Apa,J,15185.517,18998.879,3813.362,Tidak sesuai,0.852045,Voting stabil (100%)
+5,Apa,Apa,24610.998,28546.482,3935.484,Sesuai,0.853424,Voting stabil (100%)
+6,Apa,Makan,30884.402,33374.567,2490.164,Tidak sesuai,0.981852,Voting stabil (100%)
+7,Apa,Apa,36288.804,38770.357,2481.553,Sesuai,0.93228,Voting stabil (100%)
+8,Apa,Apa,43282.034,45765.543,2483.509,Sesuai,0.999527,Voting stabil (100%)
+9,Apa,Apa,49748.028,52238.209,2490.181,Sesuai,0.999131,Voting stabil (100%)
+10,Apa,Apa,55247.987,57729.369,2481.381,Sesuai,0.999095,Voting stabil (100%)
+11,Apa,Apa,59883.497,62368.062,2484.565,Sesuai,0.996368,Voting stabil (100%)
+12,Apa,Apa,64981.676,67468.774,2487.099,Sesuai,0.998246,Voting stabil (100%)

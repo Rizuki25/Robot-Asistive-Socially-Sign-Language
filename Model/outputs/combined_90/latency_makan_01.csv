@@ -1,0 +1,6 @@
+﻿no,kelas_gestur,prediksi,waktu_mulai_deteksi_ms,waktu_prediksi_ms,latensi_ms,status,confidence,sumber
+1,Makan,Makan,2919.228,11107.572,8188.344,Sesuai,0.841364,Voting stabil (100%)
+2,Makan,Makan,14057.266,20639.32,6582.055,Sesuai,0.81985,Voting stabil (100%)
+3,Makan,Makan,23513.918,31930.375,8416.457,Sesuai,0.805956,Voting stabil (100%)
+4,Makan,Makan,35013.918,40816.267,5802.349,Sesuai,0.80908,Voting stabil (100%)
+5,Makan,Makan,43963.822,46955.535,2991.713,Sesuai,0.80947,Voting stabil (100%)
