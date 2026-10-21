@@ -2,7 +2,9 @@ DATASET YANG DIPAKAI
 ====================
 Multimodal Emotion Recognition (wajah + suara) + respons robot AiNex
 
-Disusun: 10 September 2026
+Disusun    : 10 September 2026
+Diperbarui : 22 September 2026 - label FER+ DIBATALKAN, kembali ke FER2013 asli
+             (18 Sep 2026: SAVEE + TESS di suara; FER+ dan ExpW di wajah)
 
 Semua angka di bawah dihitung langsung dari isi folder di komputer ini, bukan
 dari dokumentasi dataset. Bagian "YANG BELUM DIKETAHUI" di paling bawah berisi
@@ -17,9 +19,14 @@ A1. FER2013
 -----------
 Lokasi   : webcam/datasets/fer2013/
 Format   : JPG 48x48, grayscale
-Dipakai  : YA - dataset utama model wajah (baseline dan gabungan)
+Dipakai  : YA - sumber wajah utama, dengan LABEL ASLINYA.
 
-Berkas fer2013.csv aslinya masih ada di folder itu.
+           Sempat digantikan label FER+ antara 18 dan 22 September 2026, lalu
+           dikembalikan setelah ablasi menunjukkan label aslinya lebih baik di
+           test set yang labelnya dari pihak ketiga - lihat A4.
+
+Berkas fer2013.csv aslinya masih ada di folder itu, dan tetap berguna sebagai
+sumber piksel untuk ferplus_build.py kalau percobaan FER+ mau diulang.
 
 Pembagian yang dipakai:
     train           28709 gambar
@@ -99,36 +106,186 @@ Satu berkasnya juga salah nama di rilis aslinya: FAHR.JPG seharusnya
 FAFHR.JPG (afraid, half right).
 
 
-A4. FERPlus
------------
-Lokasi   : webcam/datasets/FERPlus/
-Isi      : fer2013new.csv, src/, data/, dokumentasi
-Dipakai  : TIDAK
+A4. FERPlus (FER+)
+------------------
+Lokasi   : webcam/datasets/FERPlus/        <- sumber label
+           webcam/datasets/fer2013plus/    <- hasil, dibuat sendiri
+Dipakai  : TIDAK - sempat dipakai 18-22 September 2026, lalu DIBATALKAN
 
-Sudah diperiksa dengan grep ke seluruh berkas .py di proyek ini: tidak ada
-satu pun skrip proyek yang menyebut FERPlus. Satu-satunya berkas .py yang
-menyebutnya adalah bawaan FERPlus sendiri di webcam/datasets/FERPlus/src/.
+FERPlus BUKAN kumpulan gambar baru. Isinya label ULANG untuk gambar FER2013
+yang itu-itu juga: tiap gambar dinilai 10 anotator, hasilnya di fer2013new.csv
+berupa jumlah suara per emosi, dipasangkan menurut urutan baris. Dibangun
+dengan webcam/scripts/ferplus_build.py (skripnya tetap ada dan tetap jalan).
 
-Jadi FERPlus ter-download tapi tidak terpakai di pipeline mana pun. Lihat
-bagian YANG BELUM DIKETAHUI - bisa jadi dulu sempat dipakai untuk percobaan
-yang tidak tercatat di repo ini.
+Dari 35887 baris, 33500 terpakai; sisanya dibuang karena seri di posisi
+teratas (1776), menang 'unknown' (222), 'contempt' (212), atau 'NF' (177).
+
+KENAPA DIBATALKAN
+-----------------
+Di atas kertas FER+ jelas lebih baik: 10 anotator lawan 1. Diukur, ternyata
+tidak. Tiga model dilatih dan diuji di test set yang labelnya dari PIHAK
+KETIGA - label yang tidak dipakai melatih model mana pun:
+
+    test set     n    FER++ExpW   FER+ saja   FER2013+ExpW
+    CK+        927       0.6526      0.6624         0.7638   acc
+    KDEF       504       0.9524      0.9286         0.9444   acc
+    ExpW      5527       0.5792      0.3369         0.5721   acc
+
+FER2013 unggul 11.1 poin di CK+, kalah 0.8 di KDEF, imbang di ExpW.
+
+Sebabnya kelihatan jelas di CK+. Model FER+ memakai seperlima tebakannya untuk
+kelas neutral, padahal CK+48 TIDAK PUNYA kelas neutral sama sekali:
+
+    model             tebak neutral   porsi dari semua salahnya
+    FER+ + ExpW               20.6%                      59.3%
+    FER+ saja                 21.5%                      63.6%
+    FER2013 + ExpW             4.9%                      20.5%
+
+Ini bukan artefak test set: gambar CK+48 adalah 3 frame PUNCAK tiap urutan,
+justru saat ekspresi paling kuat dan paling tidak mungkin disebut netral.
+Untuk robot yang harus menanggapi ekspresi, menjawab "netral" ke wajah marah
+pada intensitas puncak adalah kegagalan yang mahal.
+
+Akarnya ada di proporsi data latih: neutral 35% di FER+ (9365 dari 26778)
+lawan 17% di FER2013 (4965 dari 28709). FER+ melabel-ulang banyak wajah
+berekspresi lemah jadi neutral, dan model ikut belajar begitu.
+
+SEBERAPA BEDA KEDUA LABEL ITU: dihitung langsung, FER2013 dan FER+ TIDAK
+SEPAKAT pada 11487 dari 33500 gambar - 34.3%. Sepertiga datanya diberi
+jawaban berbeda, jadi ini memang dua sistem label yang berbeda, bukan dua
+versi yang mirip.
+
+Konsekuensinya untuk pengujian: model FER2013 TIDAK boleh diuji dengan label
+FER+ dan sebaliknya - yang terukur jadi ketidaksepakatan label, bukan
+kemampuan membaca ekspresi. Karena itu perbandingannya cuma di CK+, KDEF, dan
+ExpW.
+
+YANG MASIH MENAHAN: di KDEF, FER+ tetap sedikit lebih baik (0.9524 lawan
+0.9444). Buktinya bertumpu berat pada satu test set (CK+, 927 gambar, 106
+subjek). Keputusannya kuat, tapi bukan mustahil ditinjau lagi kalau ada
+domain uji bersih yang lain.
+
+webcam/datasets/fer2013plus/ dibiarkan ada supaya percobaannya bisa diulang
+tanpa membangun ulang. merge_datasets.py tetap menolak menggabung fer2013 dan
+fer2013plus bersamaan.
 
 
-A5. Dataset wajah gabungan
+A5. ExpW (Expression in-the-Wild)
+---------------------------------
+Lokasi   : webcam/datasets/expw_raw/   <- mentah: label.lst + origin/
+           webcam/datasets/expw/       <- hasil potongan, dibuat sendiri
+Dipakai  : YA - sejak 18 September 2026
+
+Foto hasil pencarian web, jadi wajahnya tidak berpose dan pencahayaannya
+sembarang. Gambarnya TIDAK terpotong: origin/ berisi foto utuh, dan label.lst
+memberi kotak wajah plus emosinya:
+
+    nama_berkas  id_wajah  atas  kiri  kanan  bawah  keyakinan  emosi
+
+Kode emosi 0-6 = angry, disgust, fear, happy, sad, surprise, neutral
+(urutan ini dari readme.txt bawaan ExpW, BUKAN urutan EMOTIONS proyek ini).
+
+Isi mentah:
+    origin/     106962 berkas
+    label.lst    91793 wajah di 68096 foto
+
+    38866 foto di origin/ tidak disebut label.lst sama sekali - tidak ada
+    labelnya, jadi tidak terpakai.
+
+Dibuat dengan: python webcam/scripts/expw_build.py --cap 5000
+    kotak wajah + padding 20% (sama seperti kdefTrain.py dan deteksi Haar di
+    fusion_webcam.py), diubah ke 224x224 grayscale.
+
+Sebaran aslinya sangat timpang:
+    neutral   34883      surprise   7060
+    happy     30537      disgust    3995
+    sad       10559      angry      3671
+                         fear       1088
+    neutral + happy = 71% dari seluruh dataset.
+
+Karena itu dipakai --cap 5000: maksimal 5000 wajah per kelas di train, val dan
+test ikut proporsional (1071). Hasilnya:
+
+    kelas       train    val   test  total
+    --------   ------  -----  -----  -----
+    angry        2595    551    525   3671
+    disgust      2795    585    615   3995
+    fear          754    184    150   1088
+    happy        5002   1083   1071   7156
+    neutral      5000   1071   1071   7142
+    sad          5000   1071   1071   7142
+    surprise     4974   1062   1024   7060
+    --------   ------  -----  -----  -----
+    TOTAL       26120   5607   5527  37254
+
+    54539 wajah tidak dipakai karena batas itu.
+    happy 5002 sedikit melebihi 5000 karena batasnya diterapkan per FOTO, dan
+    foto terakhir yang masuk dibawa utuh beserta semua wajahnya.
+
+SATU FOTO BISA PUNYA BANYAK WAJAH - sampai 6 atau lebih:
+    1 wajah  55648 foto      4 wajah    906
+    2 wajah   8146           5 wajah    405
+    3 wajah   2212           6+ wajah   253
+
+    Karena itu pembagian train/val/test dilakukan per FOTO, bukan per wajah.
+    Kalau diacak per wajah, dua wajah dari foto yang sama bisa jatuh di train
+    dan test sekaligus - latar, pencahayaan, bahkan orangnya sama. Sudah
+    diverifikasi: irisan foto antar split = 0.
+
+MUTU LABELNYA PERLU DISEBUT DI LAPORAN.
+    Contoh potongannya sudah diperiksa dengan mata, dan labelnya jelas lebih
+    berisik daripada KDEF atau FER+: ada wajah di baris 'happy' yang tidak
+    tersenyum sama sekali, dan beberapa bayi di baris 'disgust'. ExpW dilabeli
+    otomatis lalu diperiksa sebagian, bukan divoting 10 orang seperti FER+.
+
+    Selain itu sebagian fotonya adalah stok berwatermark (Shutterstock, Getty).
+    Watermark adalah pola yang konsisten dan bisa saja ikut dipelajari model
+    sebagai petunjuk palsu. Tidak diukur seberapa banyak - kalau mau angka
+    pastinya harus dihitung sendiri.
+
+
+A6. Dataset wajah gabungan
 --------------------------
 Lokasi : webcam/datasets/combined/   (dibuat webcam/scripts/merge_datasets.py)
-Isi    : FER2013 + KDEF, semuanya grayscale
+Isi    : FER2013 + ExpW + KDEF, semuanya grayscale
 
-    split   fer2013    kdef    total    %kdef
-    train     28709    8052    36761    21.9%
-    val        3587     419     4006    10.5%
-    test       3591     504     4095    12.3%
-    TOTAL     35887    8975    44862
+Dibangun ulang 22 September 2026 waktu label FER+ dibatalkan. Dibuat dengan
+merge_datasets.py tanpa argumen tambahan (sumber bawaannya sudah fer2013,
+expw, kdef):
 
-    KDEF diulang 4x di split train saja (--kdef_repeat), supaya porsinya
-    tidak cuma 6.6%. Val dan test tidak diulang.
-    Semua dijadikan grayscale supaya model tidak memakai warna sebagai
-    petunjuk asal dataset.
+    split      fer2013    expw    kdef    total
+    train        28709   26120    8052    62881
+    val           3587    5607     419     9613
+    test          3591    5527     504     9622
+    TOTAL        35887   37254    8975    82116
+
+    porsi di train: FER2013 45.7%, ExpW 41.5%, KDEF 12.8%
+
+    KDEF diulang 4x di split train saja (--repeat kdef=4). Val dan test tidak
+    diulang - mengulang di situ cuma membuat bobot metrik menyimpang tanpa
+    menambah informasi. Semua dijadikan grayscale supaya model tidak memakai
+    warna sebagai petunjuk asal dataset.
+
+Ketimpangan antar kelas di train 3.1x (happy 13369 lawan disgust 4375) - jauh
+lebih baik daripada susunan FER+ yang 6.1x, karena FER2013 menyimpan 436
+gambar disgust sementara FER+ cuma menyisakan 175.
+
+Susunan lain masih bisa dibuat ulang kapan saja:
+    python webcam/scripts/merge_datasets.py --sources fer2013plus,expw,kdef --force
+    python webcam/scripts/merge_datasets.py --sources fer2013,kdef --force
+
+CATATAN EVALUASI: split test di sini gabungan tiga domain yang beda jauh.
+Untuk laporan, ukur juga di test masing-masing dataset secara TERPISAH -
+angka gabungan menyembunyikan pertukaran antar-domain.
+
+Hasil model yang dipakai sekarang (webcam/models/gabungan_fer2013/):
+
+    domain uji          n      acc   macro-F1
+    gabungan (semua) 9622   0.6356     0.5913
+    FER2013          3591   0.6901     0.6683
+    ExpW             5527   0.5721     0.4836
+    KDEF              504   0.9444     0.9445
+    CK+               927   0.7638     0.6136   <- domain uji luar
 
 
 ===============================================================================
@@ -175,29 +332,203 @@ Pemetaan (audio/scripts/organize_audio.py):
     kelas lain 1375-1463 berkas.
 
 
-B3. Dataset suara gabungan
+B3. SAVEE (Surrey Audio-Visual Expressed Emotion)
+-------------------------------------------------
+Lokasi   : audio/datasets/savee/AudioWAV/
+Isi      : 480 berkas WAV, 44.1 kHz mono
+Dipakai  : YA - ditambahkan 18 September 2026
+
+Cuma 4 penutur, SEMUANYA LAKI-LAKI, mahasiswa/peneliti penutur asli bahasa
+Inggris di University of Surrey, usia 27-31 (kode DC, JE, JK, KL).
+
+Pola nama: <penutur>_<kode emosi><nomor>.wav, contoh DC_sa01.wav.
+Kode emosinya campuran satu dan dua huruf, jadi angkanya dibuang dulu lalu
+dicocokkan utuh - kalau pakai startswith(), "sa01" akan salah dikira kelas "a":
+    a  = angry      15 per penutur
+    d  = disgust    15
+    f  = fear       15
+    h  = happy      15
+    n  = neutral    30   <- dua kali lipat yang lain
+    sa = sad        15
+    su = surprise   15
+    120 per penutur x 4 = 480
+
+Sumbangan per kelas: 60 untuk tiap emosi, kecuali neutral 120.
+
+
+B4. TESS (Toronto Emotional Speech Set)
+---------------------------------------
+Lokasi   : audio/datasets/tess/AudioWAV/
+Isi      : 2800 berkas WAV, 24.414 kHz mono
+Dipakai  : YA - ditambahkan 18 September 2026
+
+Cuma 2 penutur, SEMUANYA PEREMPUAN: OAF (older adult female, 64 tahun) dan
+YAF (young adult female, 26 tahun). Masing-masing mengucapkan 200 kata target
+yang SAMA ("say the word ___") untuk tiap-tiap 7 emosi:
+    2 penutur x 7 emosi x 200 kata = 2800
+
+Pola nama: <penutur>_<kata>_<emosi>.wav, contoh OAF_back_ps.wav.
+Emosi dibaca dari potongan TERAKHIR nama berkas, bukan dari nama foldernya,
+karena kapitalisasi foldernya tidak konsisten di rilis aslinya (OAF_Fear dan
+OAF_Sad berhuruf besar, YAF_fear dan YAF_sad berhuruf kecil) sementara nama
+berkasnya selalu huruf kecil.
+
+    angry, disgust, fear, happy, neutral, sad  -> langsung
+    ps = pleasant surprise                      -> surprise
+
+Catatan soal "ps": TESS hanya punya kejutan yang MENYENANGKAN. Jadi 400 berkas
+surprise dari TESS semuanya bernada positif, tidak ada kejutan yang netral atau
+negatif seperti di RAVDESS.
+
+Sumbangan per kelas: 400 untuk tiap emosi, rata.
+
+Salinan ganda di berkas unduhan:
+    Folder unduhannya berisi satu folder bersarang dengan nama yang sama
+    ("TESS Toronto emotional speech set data" di dalam dirinya sendiri) berisi
+    salinan PERSIS dari 2800 berkas yang sama - sudah dicek dengan md5.
+    Yang disalin ke audio/datasets/tess/ hanya yang lapis luar. Kalau keduanya
+    ikut tersalin, tiap berkas akan terhitung dua kali dan salinan kembarnya
+    bisa jatuh di train sekaligus di test.
+
+
+B5. Dataset suara gabungan
 --------------------------
 Lokasi : audio/datasets/audio_emotion/
 Dibuat : audio/scripts/organize_audio.py lalu audio/scripts/split_audio.py
 
-    raw/    8882 berkas  = 1440 RAVDESS + 7442 CREMA-D  (cocok persis)
-    train   6216
-    val     1329
-    test    1337
+    raw/   12162 berkas = 1440 RAVDESS + 7442 CREMA-D + 480 SAVEE + 2800 TESS
+    train   8512
+    val     1821
+    test    1829
     Pembagian 70/15/15 acak per kelas, seed 42.
+    Sudah diverifikasi: irisan train-val, train-test, dan val-test = 0 berkas.
 
 Jumlah per kelas di raw:
-    angry     1463
-    disgust   1463
-    fear      1463
-    happy     1463
-    neutral   1375
-    sad       1463
-    surprise   192   <- RAVDESS saja, ketimpangan 7.62x
+
+    kelas      crema  ravdess  savee  tess   total
+    --------   -----  -------  -----  ----   -----
+    angry       1271      192     60   400    1923
+    disgust     1271      192     60   400    1923
+    fear        1271      192     60   400    1923
+    happy       1271      192     60   400    1923
+    neutral     1087      288    120   400    1895
+    sad         1271      192     60   400    1923
+    surprise       0      192     60   400     652
+    --------   -----  -------  -----  ----   -----
+    TOTAL       7442     1440    480  2800   12162
+
+Kelas surprise masih yang paling sedikit karena CREMA-D - penyumbang terbesar -
+tidak punya kelas itu sama sekali. Tapi ketimpangannya turun jauh:
+
+    sebelum SAVEE + TESS : 1463 lawan 192 = 7.62x
+    sesudah              : 1923 lawan 652 = 2.95x
 
 Catatan: folder raw/ adalah SUMBER sebelum dipecah, isinya disalin ke
 train/val/test. Jadi jangan menjumlahkan raw + train + val + test, nanti
 terhitung dobel.
+
+
+B6. KEBOCORAN PENUTUR - batasan metodologi yang perlu ditulis di laporan
+-----------------------------------------------------------------------
+Pembagian train/val/test di split_audio.py acak PER BERKAS, bukan per penutur.
+Artinya penutur yang sama muncul di train dan di test sekaligus, jadi angka
+akurasi yang keluar adalah akurasi SPEAKER-DEPENDENT - model boleh mengenali
+suara orangnya, bukan cuma emosinya. Ini sudah begitu sejak awal (RAVDESS 24
+aktor, CREMA-D 91 aktor), tapi SAVEE dan TESS memperparahnya:
+
+    dataset   penutur   berkas   berkas per penutur
+    -------   -------   ------   ------------------
+    CREMA-D        91     7442                   82
+    RAVDESS        24     1440                   60
+    SAVEE           4      480                  120
+    TESS            2     2800                 1400   <- paling ekstrem
+
+TESS lebih parah lagi karena kedua penuturnya mengucapkan 200 kata yang SAMA
+untuk tiap emosi. Jadi untuk satu berkas TESS di test, hampir pasti ada berkas
+train dengan penutur sama, kata sama, dan emosi sama - bedanya cuma take-nya.
+SUDAH DITANGANI 18 September 2026. split_audio.py sekarang punya --by_penutur
+yang membagi per PENUTUR, bukan per berkas, dan hasilnya ditaruh di folder
+terpisah supaya dua-duanya ada:
+
+    audio/datasets/audio_emotion/       per berkas  (speaker-dependent)
+    audio/datasets/audio_emotion_spk/   per penutur (speaker-independent)
+
+    python audio/scripts/split_audio.py --by_penutur \
+        --dst audio/datasets/audio_emotion_spk
+
+Pembagian penuturnya, diacak per dataset supaya tiap split kebagian dari semua
+sumber (kalau penutur diacak jadi satu kolam, CREMA-D yang punya 91 penutur
+bisa memborong seluruh val dan test):
+
+    dataset   penutur   train   val   test
+    -------   -------   -----   ---   ----
+    crema          91      63    14     14
+    ravdess        24      16     4      4
+    savee           4       2     1      1
+    tess            2       2     0      0   <- train saja
+
+    Sudah diverifikasi: irisan penutur train-val, train-test, dan val-test
+    semuanya = 0.
+
+    Berkas: 9147 train, 1508 val, 1507 test.
+
+TESS MASUK TRAIN SAJA. Dengan cuma 2 penutur, menaruh salah satunya di test
+berarti seluruh test TESS diwakili satu suara - itu tidak mengukur apa pun.
+Konsekuensinya kelas surprise di test menyusut drastis, dari 289 jadi 47
+berkas, karena 400 dari 652 berkas surprise memang berasal dari TESS. Angka
+surprise di split speaker-independent karena itu jauh kurang stabil; sebutkan
+support-nya (47) tiap kali mengutip F1 kelas itu.
+
+Satu cacat nama berkas ditemukan saat ini dikerjakan: di TESS ada
+OA_bite_neutral.wav yang seharusnya OAF_bite_neutral.wav - kurang huruf F.
+Kalau dibiarkan, 'OA' terbaca sebagai penutur ketiga yang cuma punya satu
+berkas. Ditangani lewat tabel ERRATA_PENUTUR di split_audio.py, pola yang sama
+dengan ERRATA berkas KDEF di kdefTrain.py.
+
+CARA MELAPORKANNYA. Sajikan DUA angka berdampingan, jangan pilih salah satu:
+
+    pembagian              menjawab pertanyaan
+    --------------------   ---------------------------------------------
+    speaker-dependent      bisakah mengenali emosi dari suara yang SUDAH
+                           pernah didengar saat latih?
+    speaker-independent    bisakah mengenali emosi dari suara ORANG ASING?
+
+Yang kedua yang menggambarkan keadaan sebenarnya: robot AiNex hampir selalu
+bicara dengan orang yang belum pernah didengar modelnya.
+
+SUDAH DIUKUR 18 September 2026. Arsitektur dan cara latihnya sama persis; yang
+berbeda cuma cara membagi datanya.
+
+    pembagian              accuracy   macro F1
+    --------------------   --------   --------
+    speaker-dependent        0.6419     0.6632
+    speaker-independent      0.4778     0.4387
+    selisih                 -0.1641    -0.2245
+
+F1 per kelas, diurutkan dari yang paling parah jatuhnya:
+
+    kelas       spk-dep   spk-indep   selisih   n test
+    --------    -------   ---------   -------   ------
+    surprise     0.8990      0.3958   -0.5032       47
+    fear         0.5574      0.1765   -0.3810      243
+    sad          0.6339      0.3313   -0.3026      243
+    disgust      0.5815      0.4432   -0.1384      243
+    neutral      0.6512      0.5554   -0.0958      245
+    angry        0.7251      0.6367   -0.0884      243
+    happy        0.5944      0.5321   -0.0623      243
+
+SURPRISE JATUH PALING JAUH, DAN ITU BUKAN KEBETULAN. 400 dari 652 berkas
+surprise berasal dari TESS, yang cuma punya 2 penutur dan mengucapkan 200 kata
+yang sama untuk tiap emosi. Waktu pembagiannya per berkas, hampir tiap berkas
+surprise di test punya kembaran di train dengan penutur, kata, dan emosi yang
+sama - jadi nilai 0.8990 itu sebagian besar HAFALAN SUARA, bukan pengenalan
+emosi. Begitu TESS dikeluarkan dari test, angkanya jatuh ke 0.3958.
+
+Ini pembenaran paling jelas kenapa pembagian per penutur perlu dilaporkan:
+tanpa itu, kelas terbaik di laporan justru kelas yang angkanya paling tidak
+bisa dipercaya.
+
+Gambarnya ada di results/figur_audio_penutur.png.
 
 
 ===============================================================================
@@ -206,12 +537,16 @@ C. RINGKASAN SATU HALAMAN
 
     dataset     modalitas  jumlah mentah  dipakai?  keterangan
     ---------   ---------  -------------  --------  -----------------------
-    FER2013     wajah      35887 gambar   YA        dataset utama wajah
+    FER2013     wajah      35887 gambar   YA        sumber utama, label asli
+    FERPlus     wajah       (anotasi)     TIDAK     dicoba lalu dibatalkan, A4
+    ExpW        wajah      91793 wajah    YA        37254 dipakai (--cap 5000)
     KDEF        wajah       4900 gambar   YA        2936 terpakai (S/HL/HR)
+    CK+         wajah        981 gambar   UJI SAJA  927 dipakai, domain uji
     AKDEF       wajah         70 gambar   TIDAK     berisiko bocor ke test
-    FERPlus     wajah        (anotasi)    TIDAK     ter-download, tak terpakai
     RAVDESS     suara       1440 wav      YA        speech saja, 24 aktor
     CREMA-D     suara       7442 wav      YA        tanpa kelas surprise
+    SAVEE       suara        480 wav      YA        4 penutur, semua laki-laki
+    TESS        suara       2800 wav      YA        2 penutur perempuan, ps->surprise
 
 
 ===============================================================================
@@ -244,10 +579,17 @@ email, atau catatan lama:
    menyimpan informasi lisensi. CEK SENDIRI syarat pemakaiannya sebelum
    memasang gambar wajah KDEF di laporan atau slide sidang.
 
-4. APAKAH FERPlus PERNAH DIPAKAI.
-   Sekarang tidak terpakai. Tapi git di repo ini cuma punya SATU commit
-   ("Initial commit"), jadi tidak ada riwayat yang bisa ditelusuri. Kalau dulu
-   sempat ada percobaan pakai FERPlus, jejaknya tidak ada di sini.
+4. (Poin ini sudah terjawab, disimpan sebagai catatan.)
+   Dulu tertulis "FERPlus ter-download tapi tidak terpakai". Sejak
+   18 September 2026 FERPlus DIPAKAI dan menggantikan label FER2013 asli -
+   lihat A4. Apakah dulu sempat dicoba lalu ditinggalkan tetap tidak diketahui,
+   karena riwayat git-nya tidak menyimpan jejak itu.
+
+   Yang masih perlu dicek sendiri: SUMBER UNDUHAN ExpW dan syarat pakainya.
+   ExpW disebarkan dari halaman CUHK (mmlab.ie.cuhk.edu.hk) dan biasanya
+   menuntut persetujuan pemakaian non-komersial. Berkasnya tidak menyimpan
+   informasi lisensi. Sebagian fotonya juga stok berwatermark, jadi
+   CEK SENDIRI sebelum memasang gambar ExpW di laporan atau slide sidang.
 
 5. TANGGAL UNDUH tiap dataset - tidak tercatat di mana pun.
 

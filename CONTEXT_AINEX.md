@@ -75,14 +75,16 @@ Belum ada pengukuran formal latensi kamera-ke-output.
 - `Model/src/combined/predict_webcam.py`: opsi `--camera_url`, `--robot_url`,
   log `[STARTUP]`, FFmpeg timeout open 10 detik / read 5 detik.
 - `Model/src/common/robot_response.py`: client HTTP async + heartbeat readiness.
+- `Model/src/common/robot_audio.py`: client audio async; opsi `--robot_audio_url`
+  mengirim **nama label**, bukan sampel audio.
 - `robot/ainex_sign_response/`: package ROS, config, launch, `response_node.py`,
-  `inspect_robot.py` (read-only), `ready_audio_node.py`.
+  `inspect_robot.py` (read-only), `ready_audio_node.py`, `audio_bridge.py`.
 - Bridge disalin ke **`/home/ubuntu/ainex_sign_response`**, dijalankan langsung dengan
-  Python dalam terminal ROS; **belum diinstal ke catkin/autostart**. Port **8091**.
+  Python dalam terminal ROS; **belum diinstal ke catkin/autostart**. Port **8091**;
+  audio bridge port **8092**, tanpa ROS.
 - Tes software: `python -m unittest discover -s robot/tests -v` dari root repo.
-  Tes disiapkan, tetapi **belum berhasil dieksekusi oleh agent**: terminal tool tidak
-  menemukan interpreter Python (launcher py ada, tidak menemukan instalasi).
-  Diff/XML diperiksa; jangan mengklaim semua unit test sudah lulus.
+  **24 tes lulus** pada 19 Oktober 2026, termasuk bridge audio dan client-nya.
+  Tes memakai stub dan tidak menguji mekanik, kamera, jaringan, atau speaker fisik.
 
 ## Pengumuman suara kesiapan
 
@@ -96,8 +98,11 @@ Belum ada pengukuran formal latensi kamera-ke-output.
 - Node audio menunggu frame kamera + heartbeat sign + heartbeat expression segar
   (<6 detik), sekali per masa hidup node. Sign heartbeat sudah di client;
   **program ekspresi belum tersedia/terhubung**, jangan memalsukan readiness.
-- Suara hasil klasifikasi di speaker robot juga belum diimplementasikan;
-  `--no_speech` mengatur audio hasil di laptop, bukan audio kesiapan robot.
+- Suara hasil klasifikasi di speaker robot: bridge `audio_bridge.py` (port 8092,
+  tanpa ROS) + opsi laptop `--robot_audio_url`. WAV label disalin ke
+  `audio/words_audio` dan `audio/letters_audio`; unit test lulus, tetapi
+  **`aplay` dan speaker fisik di Pi belum diuji**. Panduan:
+  `robot/AUDIO_ROUTING.md`.
 
 ## Command yang biasa dipakai
 
@@ -129,12 +134,19 @@ python3 /home/ubuntu/ainex_sign_response/scripts/response_node.py _dry_run:=fals
 Token di atas contoh demo LAN yang sudah digunakan, bukan kredensial produksi.
 Gunakan token sama di laptop; jangan expose bridge ke internet.
 
+Bridge audio label, terminal robot tersendiri (butuh speaker di jack 3,5 mm):
+
+```bash
+export AINEX_RESPONSE_TOKEN='ainex-demo-halo-baik-2026'
+python3 /home/ubuntu/ainex_sign_response/scripts/audio_bridge.py
+```
+
 PowerShell laptop:
 
 ```powershell
 cd D:\Robot-Asistive-Socially-Sign-Language\Model
 $env:AINEX_RESPONSE_TOKEN='ainex-demo-halo-baik-2026'
-python -u -m src.combined.predict_webcam --config configs/combined_90.yaml --camera_url "http://192.168.50.2:8080/stream?topic=/camera/image_raw&type=ros_compressed" --robot_url "http://192.168.50.2:8091" --no_speech
+python -u -m src.combined.predict_webcam --config configs/combined_90.yaml --camera_url "http://192.168.50.2:8080/stream?topic=/camera/image_raw&type=ros_compressed" --robot_url "http://192.168.50.2:8091" --robot_audio_url "http://192.168.50.2:8092"
 ```
 
 Browser test: `http://192.168.50.2:8080/stream?topic=/camera/image_raw&type=ros_compressed`.
@@ -161,3 +173,7 @@ dan frame kembali; jika node tidak pulih, periksa/restart node kamera yang tepat
 jangan menjalankan driver kedua atau mengganti device ke video10. Setelah stream
 kembali, ulangi pengenalan **Baik → anggukan** (belum terkonfirmasi end-to-end).
 Berikutnya uji/aktifkan Halo, pengumuman kesiapan, dan integrasi mobile/ekspresi.
+
+Jalur audio label ke speaker robot sudah disiapkan tetapi belum diuji di
+perangkat: sambungkan X50 ke jack Pi, jalankan `speaker-test`, lalu
+`audio_bridge.py`; panduan lengkap di `robot/AUDIO_ROUTING.md`.

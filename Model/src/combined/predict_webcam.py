@@ -30,6 +30,7 @@ import torch
 import yaml
 
 from src.common.utils import get_device
+from src.common.robot_audio import RobotAudioClient
 from src.common.robot_response import RobotResponseClient
 from src.common.latency_recording import LatencyRecorder
 from src.combined.model import CombinedBiLSTM
@@ -155,13 +156,18 @@ def prediction_consensus(
 
 
 class CombinedAudioPlayer:
-    """Player audio terpadu yang mendukung audio huruf dan kata."""
+    """Player audio terpadu yang mendukung audio huruf dan kata.
 
-    def __init__(self, letters_dir: str, words_dir: str):
-        self.letters_dir = resolve_input_path(letters_dir)
-        self.words_dir = resolve_input_path(words_dir)
+    Jika ``robot_client`` diisi, klip diputar di speaker robot dan speaker
+    laptop tetap diam. Tanpa itu perilaku lama (winsound) dipertahankan.
+    """
+
+    def __init__(self, letters_dir: str, words_dir: str, robot_client=None):
+        self.robot_client = robot_client
         self._missing_warnings = set()
-        self.available = winsound is not None
+        self.available = robot_client is not None or winsound is not None
+        self.letters_dir = None if robot_client is not None else resolve_input_path(letters_dir)
+        self.words_dir = None if robot_client is not None else resolve_input_path(words_dir)
 
     def _find_audio(self, label: str) -> Optional[str]:
         candidates = [
@@ -178,6 +184,9 @@ class CombinedAudioPlayer:
     def play(self, label: str) -> None:
         if not self.available:
             return
+        if self.robot_client is not None:
+            self.robot_client.play(label)
+            return
         path = self._find_audio(label)
         if path is None:
             if label not in self._missing_warnings:
@@ -190,7 +199,9 @@ class CombinedAudioPlayer:
             print(f"[WARN] Gagal memutar audio ({path}): {error}")
 
     def close(self) -> None:
-        if self.available:
+        if self.robot_client is not None:
+            self.robot_client.close()
+        elif self.available and winsound is not None:
             winsound.PlaySound(None, 0)
 
 
@@ -222,7 +233,13 @@ def main() -> int:
     parser.add_argument("--rearm_motion_frames", type=int, default=3, help="Frame gerak pemicu isyarat baru (default: 3)")
     parser.add_argument("--letters_audio_dir", default="assets/letters_audio", help="Folder audio huruf")
     parser.add_argument("--words_audio_dir", default="assets/words_audio", help="Folder audio kata")
-    parser.add_argument("--no_speech", action="store_true", help="Nonaktifkan suara audio")
+    parser.add_argument(
+        "--robot_audio_url",
+        default=None,
+        help="Bridge audio di robot, contoh http://192.168.50.2:8092; menggantikan speaker laptop",
+    )
+    parser.add_argument("--no_speech", action="store_true",
+                        help="Nonaktifkan suara di laptop (audio robot tetap aktif jika --robot_audio_url diisi)")
     parser.add_argument("--mirror", action="store_true", help="Cerminkan tampilan kamera")
     parser.add_argument("--robot_url", default=None,
                         help="Bridge respons ROS, contoh http://192.168.50.2:8091")
@@ -304,7 +321,19 @@ def main() -> int:
         print(f"[STARTUP] Hasil dikirim ke aplikasi web, room: {web_client.room_id}", flush=True)
 
     audio_player = None
-    if not args.no_speech:
+    if args.robot_audio_url:
+        try:
+            robot_audio = RobotAudioClient(
+                args.robot_audio_url, os.environ.get("AINEX_RESPONSE_TOKEN", ""),
+            )
+        except ValueError as error:
+            print("[ERROR]", error, flush=True)
+            return 1
+        audio_player = CombinedAudioPlayer(
+            args.letters_audio_dir, args.words_audio_dir, robot_audio,
+        )
+        print("[STARTUP] Audio hasil dikirim ke robot:", args.robot_audio_url, flush=True)
+    elif not args.no_speech:
         audio_player = CombinedAudioPlayer(args.letters_audio_dir, args.words_audio_dir)
 
     camera_source = args.camera_url or args.camera_index

@@ -129,8 +129,24 @@ python -m py_compile Model/src/common/robot_response.py Model/src/combined/predi
 ```
 
 Tests menggunakan stub ROS dan tidak menguji mekanik, kamera, jaringan robot,
-atau kompatibilitas MotionManager terpasang. Suara hasil klasifikasi dan aplikasi
-mobile belum termasuk perubahan ini; pengumuman kesiapan dijelaskan di bawah.
+atau kompatibilitas MotionManager terpasang. Aplikasi mobile belum termasuk
+perubahan ini; audio hasil klasifikasi dijelaskan di bagian berikut, dan
+pengumuman kesiapan dijelaskan setelahnya.
+
+## Suara hasil klasifikasi di speaker robot
+
+Hasil klasifikasi dapat dibunyikan di speaker robot, bukan speaker laptop.
+Laptop hanya mengirim **nama label**; bridge di robot memutar WAV yang sudah
+ada di `audio/words_audio` dan `audio/letters_audio`. Audio tidak di-streaming,
+sehingga tetap berjalan tanpa internet dan latensinya kecil.
+
+- Di robot: `python3 /home/ubuntu/ainex_sign_response/scripts/audio_bridge.py`
+  (port 8092, tanpa ROS, memakai `AINEX_RESPONSE_TOKEN` yang sama).
+- Di laptop: tambahkan `--robot_audio_url http://192.168.50.2:8092`.
+  Opsi ini menggantikan speaker laptop; `--no_speech` tidak lagi diperlukan.
+
+Panduan pemasangan speaker, pengujian ALSA, dan autostart:
+[AUDIO_ROUTING.md](AUDIO_ROUTING.md).
 
 ## Pengumuman kesiapan dengan suara Gadis
 

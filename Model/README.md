@@ -254,6 +254,11 @@ python -m src.combined.predict_webcam --config configs/combined_90.yaml
 Audio diputar melalui perangkat output Windows saat hasil prediksi terkunci.
 Pastikan speaker yang diinginkan menjadi perangkat output aktif.
 
+Untuk memutar hasil di speaker robot AiNex, jalankan bridge audio di robot lalu
+tambahkan `--robot_audio_url http://192.168.50.2:8092`. Opsi ini menggantikan
+speaker laptop, jadi tidak ada suara ganda. Panduan lengkap ada di
+`robot/AUDIO_ROUTING.md`.
+
 Untuk membuat ulang audio (memerlukan internet), pasang dependency khusus
 pembuatan audio lalu jalankan generator:
 

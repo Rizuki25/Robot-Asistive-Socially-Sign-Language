@@ -408,3 +408,957 @@ BARU  results_figures.py
       jadi dua warna kategorikal biasa - panjang batangnya sendiri sudah cukup
       menunjukkan fusion menang.
 
+
+===============================================================================
+12. DATASET SUARA DITAMBAH: SAVEE DAN TESS (18 September 2026)
+===============================================================================
+
+Latar belakang: kelas surprise cuma punya 192 berkas lawan 1375-1463 kelas
+lain, karena CREMA-D - penyumbang 7442 dari 8882 berkas - tidak punya kelas
+itu sama sekali. Dua dataset baru ditambahkan terutama untuk menambal itu.
+
+BARU  audio/datasets/savee/AudioWAV/   480 berkas
+      SAVEE, 4 penutur laki-laki. Nama berkas <penutur>_<kode><nomor>.wav.
+
+BARU  audio/datasets/tess/AudioWAV/    2800 berkas
+      TESS, 2 penutur perempuan (OAF dan YAF), 14 folder emosi diratakan jadi
+      satu folder. Unduhannya berisi folder bersarang dengan nama yang sama
+      berisi salinan PERSIS 2800 berkas itu - dicek dengan md5, dan yang
+      disalin hanya lapis luarnya. Kalau keduanya ikut, tiap berkas terhitung
+      dua kali dan kembarannya bisa jatuh di train sekaligus di test.
+
+UBAH  audio/scripts/organize_audio.py
+      Tambah organize_savee() dan organize_tess(), plus lewati_kalau_kosong()
+      supaya dataset yang belum diunduh dilewati dengan pesan, bukan bikin
+      skripnya gagal.
+
+      Dua jebakan pemetaan label yang ditangani:
+        - SAVEE: kode emosinya campuran satu dan dua huruf (a, d, f, h, n, sa,
+          su). Angkanya dibuang dulu lalu dicocokkan UTUH; startswith() akan
+          salah membaca "sa01" sebagai kelas "a".
+        - TESS: kapitalisasi nama folder tidak konsisten di rilis aslinya
+          (OAF_Fear/OAF_Sad berhuruf besar, YAF_fear/YAF_sad kecil). Label
+          dibaca dari nama BERKAS, yang selalu huruf kecil. Kode "ps" =
+          pleasant surprise dipetakan ke surprise.
+
+      Ringkasan akhirnya sekarang memecah jumlah per kelas menurut dataset
+      asalnya, jadi kelihatan mana yang menyumbang apa.
+
+UBAH  audio/scripts/split_audio.py
+      Sekarang MENGHAPUS train/, val/, dan test/ dulu sebelum mengisi ulang.
+
+      Ini memperbaiki masalah nyata, bukan sekadar kerapian. Pembagiannya acak
+      per kelas dengan seed 42, jadi begitu isi raw/ berubah, daftar berkasnya
+      berubah dan pembagiannya ikut berbeda. Tanpa penghapusan, berkas dari
+      pembagian LAMA tertinggal di sana - satu berkas yang dulu di test bisa
+      sekarang juga ada di train, dan akurasinya jadi terlalu bagus. Ada
+      --keep kalau memang sengaja mau menumpuk.
+
+      Sekalian: glob() di-sorted() dulu sebelum shuffle, supaya pembagiannya
+      tidak bergantung urutan sistem berkas, dan dapat argparse (--seed).
+
+UBAH  audio/scripts/train_audio_cnn.py
+      Datanya sendiri tidak butuh perubahan skrip - formatnya sama. Yang
+      ditambahkan adalah cara membacanya:
+
+        - tiap epoch melaporkan acc DAN macro (rata-rata akurasi per kelas).
+          Pada data timpang, acc saja menyesatkan: model yang jarang menebak
+          surprise pun masih kelihatan bagus.
+        - --balance  : bobot kelas di CrossEntropyLoss, berbanding terbalik
+                       dengan jumlah sampel, dinormalkan ke rata-rata 1.
+        - --select macro : checkpoint terbaik dipilih dari macro, bukan acc.
+        - setelah selesai, akurasi per kelas dicetak dari checkpoint yang
+          benar-benar disimpan, bukan dari epoch terakhir.
+
+      Dua opsi barunya MATI secara bawaan, jadi perintah lama menghasilkan
+      perilaku yang persis sama seperti sebelumnya.
+
+HASIL raw/ 8882 -> 12162 berkas; train 6216 -> 8512, val 1329 -> 1821,
+      test 1337 -> 1829. Irisan antar split dicek = 0 berkas.
+
+        kelas      sebelum  sesudah
+        --------   -------  -------
+        angry         1463     1923
+        disgust       1463     1923
+        fear          1463     1923
+        happy         1463     1923
+        neutral       1375     1895
+        sad           1463     1923
+        surprise       192      652   <- 3.4x lebih banyak
+
+      Ketimpangan surprise turun dari 7.62x ke 2.95x.
+
+PERLU DIPERHATIKAN
+      audio/models/best_audio_cnn.pt yang sekarang dilatih pada pembagian
+      LAMA. Karena raw/ berubah, pembagiannya ikut berubah, dan berkas yang
+      dulu dipakai melatih model itu sekarang banyak yang mendarat di test.
+      Jadi angka dari "results_calculation.py audio" pada model lama sudah
+      TIDAK sah - modelnya harus dilatih ulang dulu.
+
+BATASAN yang perlu masuk laporan: pembagiannya acak per BERKAS, bukan per
+      penutur, jadi angkanya speaker-dependent. TESS memperparah ini - cuma 2
+      penutur untuk 2800 berkas, dan keduanya mengucapkan 200 kata yang sama
+      untuk tiap emosi, jadi hampir tiap berkas test punya kembaran di train
+      dengan penutur, kata, dan emosi yang sama. Penjelasan lengkap di
+      DATASETS.txt bagian B6.
+
+
+===============================================================================
+13. DATASET WAJAH DITAMBAH: FER+ DAN ExpW (18 September 2026)
+===============================================================================
+
+BARU  webcam/scripts/ferplus_build.py
+      FERPlus ternyata BUKAN kumpulan gambar - isinya label ulang untuk gambar
+      FER2013 yang itu-itu juga, hasil voting 10 anotator, dipasangkan menurut
+      URUTAN BARIS dengan fer2013.csv. Sebelumnya berkas ini cuma ter-download
+      dan menganggur (DATASETS.txt bagian D nomor 4).
+
+      Gambarnya digambar ULANG dari fer2013.csv, bukan memakai JPG di
+      webcam/datasets/fer2013/. Alasannya: nama berkas JPG di situ
+      (Training_10118481.jpg) adalah ID acak dari unggahan Kaggle, bukan nomor
+      baris, jadi tidak ada cara memasangkannya dengan fer2013new.csv.
+
+      Label ditentukan suara terbanyak; dibuang kalau 'unknown'/'NF'/'contempt'
+      yang menang, kalau seri di posisi teratas, atau kalau tidak ada suara
+      sama sekali. Dari 35887 baris, 33500 terpakai.
+
+      Split memakai kolom Usage bawaan (Training/PublicTest/PrivateTest), yaitu
+      pembagian resmi yang dipakai makalah-makalah FER+.
+
+      PAGAR PENGAMAN. Keluarannya dinamai fer2013plus, bukan ferplus. Windows
+      tidak membedakan huruf besar-kecil, jadi 'webcam/datasets/ferplus'
+      menunjuk folder yang SAMA dengan 'webcam/datasets/FERPlus' - sumbernya
+      sendiri. Percobaan pertama ketahuan waktu skrip menolak menimpa folder
+      yang sudah ada; kalau waktu itu --force terlanjur dipakai, fer2013new.csv
+      ikut terhapus. Sekarang skripnya menolak kalau folder tujuan berisi
+      berkas sumber, apa pun namanya.
+
+BARU  webcam/scripts/expw_build.py
+      ExpW memberi foto UTUH di origin/ plus label.lst berisi kotak wajah, jadi
+      wajahnya harus dipotong sendiri. Kotak dipotong dengan padding 20%, sama
+      seperti kdefTrain.py dan deteksi Haar di fusion_webcam.py, lalu diubah ke
+      224x224 grayscale.
+
+      Tiga hal yang ditangani:
+        - Satu foto bisa punya sampai 6 wajah lebih. Pembagian train/val/test
+          karena itu diacak per FOTO, bukan per wajah; kalau per wajah, dua
+          wajah dari foto yang sama bisa jatuh di train dan test sekaligus
+          dengan latar dan pencahayaan yang sama. Irisan foto antar split
+          sudah dicek = 0.
+        - origin/ berisi 106962 berkas tapi label.lst cuma menyebut 68096.
+          Sisanya tidak berlabel, dilewati.
+        - Sebarannya sangat timpang (neutral 34883 dan happy 30537 = 71%,
+          fear cuma 1088). --cap 5000 membatasi per kelas di train, val dan
+          test ikut proporsional. Batas diterapkan per foto juga, jadi hasilnya
+          bisa sedikit melebihi - happy berakhir di 5002.
+
+UBAH  webcam/scripts/merge_datasets.py - tidak lagi terpaku FER2013 + KDEF
+      Sumbernya sekarang lewat --sources, pengulangan lewat --repeat nama=N.
+      --kdef_repeat lama masih jalan sebagai jalan pintas. Tabel ringkasannya
+      ikut menyesuaikan jumlah kolom, dan sekarang menampilkan porsi tiap
+      sumber plus ketimpangan antar kelas.
+
+      Tambahan --imgsz untuk menyeragamkan ukuran, karena sumbernya sekarang
+      campur 48x48 dan 224x224. Bawaannya mati; ultralytics toh mengubah ukuran
+      saat memuat.
+
+      Sumber yang sudah abu-abu (FER+, ExpW) dideteksi dengan mencicipi
+      beberapa berkas, lalu disalin apa adanya tanpa baca-tulis ulang. Untuk
+      puluhan ribu berkas ini beda yang terasa.
+
+      PENOLAKAN BARU: fer2013 dan fer2013plus tidak boleh dipakai bersamaan.
+      Gambarnya sama persis, labelnya beda, jadi menggabungnya berarti memberi
+      model dua jawaban yang bertabrakan untuk satu wajah.
+
+HASIL webcam/datasets/combined/ disusun ulang: 44862 -> 79729 berkas.
+
+        split   fer2013plus    expw    kdef    total
+        train         26778   26120    8052    60950
+        val            3372    5607     419     9398
+        test           3350    5527     504     9381
+
+      Yang paling penting, kelas disgust:
+
+        FER2013 asli      436 gambar latih
+        FER+              175   <- FER+ justru memperburuk
+        gabungan         4114   <- ExpW yang menambal
+
+      Ketimpangan antar kelas di train: FER2013 16.4x, FER+ sendirian 53.5x,
+      gabungan sekarang 6.1x. Kelas paling langka berpindah dari disgust ke
+      fear (2554).
+
+      Susunan lama masih bisa dibuat ulang:
+        python webcam/scripts/merge_datasets.py --sources fer2013,kdef --force
+
+BATASAN yang perlu masuk laporan: mutu label ExpW jelas di bawah FER+ dan
+      KDEF. Contoh potongannya diperiksa dengan mata - ada wajah di kelas
+      'happy' yang tidak tersenyum sama sekali dan beberapa bayi di kelas
+      'disgust'. Sebagian fotonya juga stok berwatermark (Shutterstock, Getty),
+      dan watermark adalah pola konsisten yang bisa ikut dipelajari model
+      sebagai petunjuk palsu. Tidak diukur seberapa banyak.
+
+
+===============================================================================
+14. HASIL TRAINING SESI INI + PEMBERESAN (18 September 2026)
+===============================================================================
+
+Bagian 12 dan 13 menyiapkan datanya; bagian ini mencatat hasil melatihnya.
+
+MODEL WAJAH
+      webcam/models/gabungan_ferplus_expw/  (disalin dari runs/, ikut git)
+      yolov8n-cls, 20 epoch, batch 64, workers 8, RTX 4060, ~31 menit.
+      Val top-1 terbaik 0.6964 di epoch 19.
+
+      KEDUA model - yang lama dan yang baru - diuji di test set yang SAMA
+      (webcam/datasets/combined, 9381 gambar). Ini penting: membandingkan
+      angka lama yang diukur di test FER2013 dengan angka baru yang diukur di
+      test FER+ tidak sah, karena label dan isinya beda. Jadi model lama
+      dijalankan ulang di test set yang baru.
+
+        test set            n     acc lama  acc baru   macro-F1 lama  baru
+        ----------------  -----  ---------  --------   -------------  ------
+        gabungan (semua)   9381     0.4741    0.6976          0.4306  0.6293
+        FER+               3350     0.6773    0.8546          0.5934  0.7359
+        ExpW               5527     0.3094    0.5792          0.2885  0.4900
+        KDEF                504     0.9306    0.9524          0.9296  0.9524
+
+      Baris ExpW memang diharapkan melonjak - model lama tidak pernah melihat
+      ExpW. Dua angka yang lebih informatif:
+        - FER+ naik 17.7pp. Label yang lebih bersih memang lebih mudah
+          dipelajari, dan itu memang tujuan memakai FER+.
+        - KDEF tetap naik 2.2pp walau porsinya di data latih turun dari 21.9%
+          ke 13.2%. Jadi menambah ExpW tidak mengorbankan domain studio.
+
+      F1 per kelas di test gabungan, yang paling banyak berubah:
+        takut   0.1991 -> 0.5043
+        marah   0.4223 -> 0.6607
+        netral  0.4872 -> 0.7097
+        jijik   0.2006 -> 0.3287
+
+      jijik tetap yang paling lemah. Wajar: FER+ cuma menyisakan 175 gambar
+      latih untuk kelas itu, dan tambalan dari ExpW justru kelas yang labelnya
+      paling berisik - persis yang diperingatkan di DATASETS.txt A5.
+
+MODEL AUDIO DAN FUSION
+      Test set audionya BERBEDA sebelum dan sesudah (1337 lalu 1829 sampel)
+      karena datasetnya sendiri bertambah, jadi angkanya TIDAK sebanding satu
+      lawan satu. Menjalankan model audio lama di test set baru juga tidak
+      menolong: berkas yang dulu dipakai melatihnya sekarang banyak yang jatuh
+      di test, jadi angkanya akan terlalu bagus. Kedua angka dilaporkan apa
+      adanya dengan catatan itu.
+
+        model     acc sebelum  acc sesudah   macro-F1 sebelum  sesudah
+        --------  -----------  -----------   ----------------  -------
+        audio          0.5939       0.6419             0.6096   0.6632
+        fusion         0.7734       0.8140             0.7570   0.7689
+
+      Fusion tetap di atas kedua modalitas tunggalnya (wajah 0.6976, audio
+      0.6419), yang memang jadi alasan pendekatan ini dipakai.
+
+BARU  results/figur_sesi_18sep.png dan .jpg
+      Tiga panel dumbbell: akurasi wajah per domain uji, F1 wajah per kelas,
+      dan F1 audio per kelas. Satu hue biru dua shade - "lama" dan "baru" itu
+      berurutan, bukan dua hal setara, jadi bukan pasangan kategorikal.
+
+      Dibaca dari CSV di results/, bukan dari cache probabilitas, jadi
+      'python results_figures.py --sesi' merendernya tanpa inferensi ulang.
+
+      Gambarnya diperiksa dengan mata setelah dirender, bukan dianggap benar
+      karena kodenya jalan. Dua masalah tata letak ketemu dan diperbaiki:
+      catatan "n=" di panel A bertabrakan dengan titiknya sendiri (dipindah ke
+      label sumbu), dan panel audio yang cuma dua baris menyisakan panel nyaris
+      kosong (diganti jadi F1 per kelas).
+
+UBAH  results_figures.py
+      dumbbell() sekarang menerima nama seri dan batas sumbu x, supaya bisa
+      dipakai ulang untuk perbandingan selain baseline-vs-gabungan. Tambah
+      baca_metrik() yang membaca metrics_*.csv, gambar_sesi(), dan bendera
+      --sesi.
+
+BARU  results/metrics_audio_lama_test.csv, confusion_audio_lama_test.csv
+      Salinan hasil audio SEBELUM SAVEE dan TESS masuk, diambil dari commit
+      74334c5. Disimpan sebagai berkas supaya figur perbandingan membaca data
+      nyata, bukan angka yang ditulis tangan di dalam kode.
+
+BERES tempSAVEE/ dan tempTESS/ dihapus.
+      Sebelum dihapus, semua 3280 berkasnya dicocokkan md5 satu per satu dengan
+      salinan di audio/datasets/savee/ dan audio/datasets/tess/ - 0 hilang,
+      0 berbeda isinya.
+
+      tempExpressionInTheWild/ sudah dipindah ke webcam/datasets/expw_raw/ di
+      bagian 13, bukan disalin, jadi tidak ada yang tertinggal di root.
+
+MASIH BISA DIBERESKAN SENDIRI
+      - webcam/datasets/expw_raw/origin.7z.001 sampai .008 masih ada padahal
+        origin/ sudah diekstrak. Aman dihapus, tapi dibiarkan karena itu berkas
+        unduhan asli.
+      - merge_datasets.py --train memakai yolo11n-cls.pt sementara
+        training_yolo_.py memakai yolov8n-cls.pt. Model di atas dilatih dengan
+        training_yolo_.py, jadi yolov8n. Perbedaan ini sudah ada sejak sebelum
+        sesi ini dan sengaja tidak diubah diam-diam - samakan dulu kalau mau
+        membandingkan hasil dua jalur itu.
+
+
+===============================================================================
+15. ALPHA DISETEL DARI HASIL SAPUAN + SPLIT SPEAKER-INDEPENDENT
+    (18 September 2026)
+===============================================================================
+
+PERBAIKAN  fusion_webcam.py dan results_calculation.py menunjuk model wajah
+           yang SALAH.
+      Keduanya masih memuat webcam/models/fer2013_baseline-2/weights/best.pt,
+      yaitu run paling awal - akurasinya 0.4741 di test gabungan sekarang,
+      sementara model hasil sesi ini 0.6976. Jadi demo langsungnya memakai
+      model audio baru yang dipasangkan ke model wajah dua generasi lebih tua.
+
+      Gampang terlewat karena path-nya memang berakhiran "best.pt" - tiap run
+      ultralytics punya best.pt sendiri, jadi yang menentukan model mana adalah
+      nama FOLDER-nya. Komentar penjelas ditaruh di kedua berkas supaya tidak
+      terulang.
+
+UBAH  ALPHA 0.6 -> 0.50 di fusion_webcam.py dan results_calculation.py.
+      Sapuan ulang dengan kedua model yang sekarang, di test gabungan 9381
+      sampel:
+
+        alpha   accuracy   macro-F1
+         0.00     0.6700     0.6286   <- audio saja
+         0.40     0.8297     0.7898
+         0.50     0.8384     0.7961   <- tertinggi di dua-duanya
+         0.60     0.8140     0.7689   <- nilai lama
+         1.00     0.6976     0.6293   <- visual saja
+
+      Untung +2.4pp accuracy dan +2.7pp macro-F1 cuma dari mengganti satu
+      angka. Temuan ini sebenarnya sudah dicatat di bagian 9 dan tidak pernah
+      ditindaklanjuti.
+
+      Dugaan awal saat merencanakan ini keliru: diperkirakan alpha optimalnya
+      NAIK karena model wajah membaik jauh lebih banyak daripada model audio.
+      Ternyata tetap di 0.50. Dicatat di sini supaya alasannya tidak dikutip
+      salah - yang benar adalah hasil sapuannya, bukan penalarannya.
+
+      Tabel di atas juga jadi pembenaran empiris pendekatan multimodal ini:
+      fusion unggul ~14pp dari modalitas tunggal terbaiknya di data yang sama.
+      Layak masuk laporan.
+
+UBAH  audio/scripts/split_audio.py - tambah --by_penutur
+      Membagi per PENUTUR, bukan per berkas. Semua berkas milik satu orang
+      masuk split yang sama, jadi penutur di test benar-benar belum pernah
+      terdengar saat latih.
+
+      Alasannya bukan kerapian metodologi semata: robot AiNex hampir selalu
+      bicara dengan orang asing, jadi angka speaker-independent itulah yang
+      menggambarkan keadaan pemakaian sebenarnya.
+
+      Penutur diacak PER DATASET, bukan dalam satu kolam. Kalau satu kolam,
+      CREMA-D yang punya 91 dari 121 penutur bisa memborong seluruh val dan
+      test, dan sumber lain tidak terwakili sama sekali.
+
+        dataset   penutur   train   val   test
+        crema          91      63    14     14
+        ravdess        24      16     4      4
+        savee           4       2     1      1
+        tess            2       2     0      0   <- train saja
+
+        berkas: 9147 train, 1508 val, 1507 test
+        irisan penutur antar split sudah dicek = 0
+
+      TESS masuk train saja lewat --min_penutur (bawaan 3): dengan 2 penutur,
+      menaruh salah satunya di test berarti test-nya diwakili satu suara.
+      Konsekuensinya kelas surprise di test menyusut dari 289 jadi 47 berkas,
+      karena 400 dari 652 berkas surprise berasal dari TESS. Skripnya mencetak
+      peringatan ini sendiri, dan support 47 itu harus ikut disebut tiap kali
+      F1 surprise dikutip.
+
+      Hasilnya ditulis ke folder TERPISAH (audio/datasets/audio_emotion_spk/),
+      bukan menimpa yang lama, supaya dua-duanya ada di disk dan dua angka bisa
+      dilaporkan berdampingan.
+
+      Mode lama tetap bawaan dan sudah diuji regresi: pembagian per berkas
+      dengan seed 42 masih menghasilkan isi split yang SAMA PERSIS dengan
+      folder audio_emotion/ yang ada, jadi model yang sekarang tidak kehilangan
+      test set-nya.
+
+TEMUAN  Satu berkas TESS salah nama di rilis aslinya: OA_bite_neutral.wav,
+      kurang huruf F, seharusnya OAF_bite_neutral.wav. Kalau dibiarkan, 'OA'
+      terbaca sebagai penutur ketiga yang cuma punya satu berkas, dan penutur
+      satu-berkas itu bisa mendarat di test sendirian. Ditangani lewat tabel
+      ERRATA_PENUTUR, pola yang sama dengan ERRATA berkas KDEF di kdefTrain.py.
+
+BELUM  Model speaker-independent-nya BELUM dilatih. Perintahnya:
+
+        python audio/scripts/train_audio_cnn.py --yes \
+            --data audio/datasets/audio_emotion_spk \
+            --out audio/models/best_audio_cnn_spk.pt --workers 4
+
+      Angkanya akan lebih rendah dari 0.6419 yang sekarang. Itu memang
+      seharusnya - yang sekarang terlalu tinggi karena penutur yang sama ada di
+      train dan test.
+
+
+===============================================================================
+16. HASIL MODEL SPEAKER-INDEPENDENT (18 September 2026)
+===============================================================================
+
+Model dilatih di audio/datasets/audio_emotion_spk/, disimpan sebagai
+audio/models/best_audio_cnn_spk.pt. Arsitektur dan cara latihnya sama persis
+dengan model speaker-dependent; yang berbeda cuma cara membagi datanya.
+
+        pembagian              accuracy   macro F1
+        speaker-dependent        0.6419     0.6632
+        speaker-independent      0.4778     0.4387
+        selisih                 -0.1641    -0.2245
+
+      F1 per kelas, diurutkan dari yang paling parah jatuhnya:
+
+        kelas       spk-dep   spk-indep   selisih   n test
+        surprise     0.8990      0.3958   -0.5032       47
+        fear         0.5574      0.1765   -0.3810      243
+        sad          0.6339      0.3313   -0.3026      243
+        disgust      0.5815      0.4432   -0.1384      243
+        neutral      0.6512      0.5554   -0.0958      245
+        angry        0.7251      0.6367   -0.0884      243
+        happy        0.5944      0.5321   -0.0623      243
+
+TEMUAN TERPENTING SESI INI: surprise jatuh dari 0.8990 ke 0.3958.
+      Di bagian 12 angka 0.8990 itu dicatat sebagai keberhasilan menambal kelas
+      surprise dengan SAVEE dan TESS. Ternyata sebagian besar bukan pengenalan
+      emosi, melainkan hafalan suara: 400 dari 652 berkas surprise berasal dari
+      TESS, yang cuma punya 2 penutur dan mengucapkan 200 kata yang sama untuk
+      tiap emosi. Waktu pembagiannya per berkas, hampir tiap berkas surprise di
+      test punya kembaran di train dengan penutur, kata, dan emosi yang sama.
+
+      Jadi kelas yang kelihatan paling bagus di laporan justru kelas yang
+      angkanya paling tidak bisa dipercaya. Ini pembenaran paling jelas kenapa
+      pembagian per penutur harus ikut dilaporkan.
+
+      Tambahan SAVEE dan TESS tetap berguna - accuracy speaker-dependent naik
+      dari 0.5939 ke 0.6419, dan itu diukur dengan cara yang sama sebelum dan
+      sesudah. Yang perlu dikoreksi cuma cara membaca angka surprise-nya.
+
+BARU  results/figur_audio_penutur.png dan .jpg
+      Dua panel: F1 per kelas (dumbbell menurun) dan confusion matrix model
+      speaker-independent. Dirender dengan:
+        python results_figures.py --penutur
+
+UBAH  results_figures.py - dumbbell() dapat parameter turun=
+      Angka label selama ini ditaruh di ujung KANAN batang, dengan anggapan
+      nilainya selalu naik. Di perbandingan yang menurun, ujung kanan justru
+      titik "sebelum", jadi angka 0.396 tercetak menempel di titik 0.899.
+      Dengan turun=True angkanya menempel di titik "sesudah", di sisi yang
+      menjauh dari titik "sebelum". Bawaannya tetap False, dan figur lama sudah
+      dicek ulang: hasil render figur_sesi_18sep.png byte-nya identik.
+
+PERBAIKAN  results_calculation.py - dua cacat yang bikin angka salah diam-diam.
+
+      1. --data cuma berlaku untuk dataset VISUAL. Folder audio terkunci di
+         konstanta AUDIO_DIR dan tidak bisa diganti dari baris perintah. Jadi
+         'results_calculation.py audio --data <folder spk>' diam-diam tetap
+         mengukur di test set speaker-dependent - yang sebagian berkasnya
+         dipakai melatih model spk itu. Angka pertama yang keluar, 0.6829,
+         salah karena ini. Sekarang ada --audio_data, dan folder audionya ikut
+         masuk sidik jari cache supaya tidak tertukar.
+
+      2. mode_audio() mengabaikan --tag dan selalu menulis ke
+         metrics_audio_<split>.csv. Mengevaluasi model audio kedua karena itu
+         MENIMPA hasil model pertama tanpa peringatan apa pun. mode_face()
+         sudah memakai --tag sejak awal; sekarang mode_audio() sama.
+
+BELUM  Fusion masih memakai model audio speaker-dependent. Kalau angka fusion
+      yang speaker-independent juga dibutuhkan, jalankan ulang fusion dengan
+      --audio_model best_audio_cnn_spk.pt. Perlu diingat pasangan wajah-suara
+      di mode fusion memang sintetis, jadi angkanya punya batasan sendiri.
+
+
+===============================================================================
+17. PEMBERSIHAN SISA-SISA (18 September 2026)
+===============================================================================
+
+Menutup sebagian besar daftar di bagian 9 yang sejak awal belum ditindaklanjuti.
+
+UBAH  device tidak lagi terkunci 'cpu'.
+
+      fusion_webcam.py      : DEVICE 'cpu' -> 'auto', plus fungsi
+                              pilih_device(). Ini demo langsung yang mengolah
+                              tiap frame, jadi paling terasa. --device tetap
+                              ada kalau mau memaksa cpu.
+      webcam/scripts/kdefTrain.py : device='cpu' dan workers=0 yang ditulis
+                              langsung di model.train() diganti --device
+                              (bawaan auto) dan --workers (bawaan 4).
+
+      results_calculation.py SENGAJA TETAP 'cpu' secara bawaan, cuma ditambah
+      opsi --device. Alasannya beda dengan yang lain: angka di results/*.csv
+      dan di laporan dihitung di CPU. Inferensi GPU bisa menggeser argmax pada
+      sampel yang skor dua kelas teratasnya nyaris seri, jadi angkanya berubah
+      tipis tanpa sebab yang kelihatan. Kalau mau pindah ke GPU, hitung ulang
+      SEMUA angkanya dengan cara yang sama, jangan sebagian.
+
+      Device sekarang ikut masuk sidik jari cache, jadi hasil inferensi CPU
+      tidak akan dipakai ulang diam-diam untuk permintaan GPU.
+
+      Sudah diuji regresi: 'results_calculation.py audio --no_cache' dengan
+      bawaan masih menghasilkan accuracy 0.6419 dan macro-F1 0.6632, sama
+      persis dengan angka yang sudah tercatat.
+
+UBAH  results_calculation.py - dataset visual bawaan fer2013 -> combined.
+      Menjalankan 'results_calculation.py face' tanpa argumen tadinya mengukur
+      di webcam/datasets/fer2013, yaitu FER2013 dengan LABEL ASLI. Model yang
+      dipakai sekarang dilatih dengan label FER+, jadi angkanya jadi campuran
+      dua sistem label tanpa peringatan apa pun. Bawaannya sekarang
+      webcam/datasets/combined, sama dengan data latihnya.
+
+UBAH  webcam/scripts/merge_datasets.py - yolo11n-cls.pt -> yolov8n-cls.pt.
+      training_yolo_.py memakai yolov8n sementara --train di merge_datasets.py
+      memakai yolo11n, jadi dua jalur latih menghasilkan arsitektur berbeda dan
+      hasilnya tidak bisa dibandingkan langsung. Sekarang keduanya yolov8n dan
+      sama-sama memakai berkas lokal di webcam/models/ kalau ada. Model yang
+      dipakai di laporan dilatih lewat training_yolo_.py, jadi memang yolov8n.
+
+
+===============================================================================
+18. YANG MASIH TERBUKA (per 18 September 2026)
+===============================================================================
+
+Menggantikan daftar di bagian 9, yang isinya sudah dikerjakan semua.
+
+- RESPONS ROBOT MASIH DIMATIKAN. WAVE_ENABLED = False di fusion_webcam.py, dan
+  blok pemanggil trigger_wave() di loop utama masih dikomentari. Padahal
+  respons robot ikut disebut di judul proyek. Ini keputusan lingkup, bukan
+  pekerjaan teknis: kalau robot ikut diuji sidang, hidupkan dan uji; kalau
+  tidak, tulis tegas di laporan bahwa bagian itu tidak termasuk.
+
+- results/figur_model_wajah.png dan figur_fusion.png masih hasil 11 September,
+  dibuat dengan model wajah dan audio yang LAMA. Isinya tidak salah untuk
+  perbandingan yang dulu, tapi jangan dipakai mewakili sistem yang sekarang.
+  Buat ulang dengan 'python results_figures.py --jpg' - perlu inferensi ulang,
+  jadi agak lama.
+
+- Fusion belum diukur dengan model audio speaker-independent. Perintahnya:
+      python results_calculation.py fusion \
+          --audio_model audio/models/best_audio_cnn_spk.pt \
+          --audio_data audio/datasets/audio_emotion_spk \
+          --data webcam/datasets/combined --tag spk --sweep
+  Alpha terbaiknya kemungkinan bergeser ke arah visual, karena modalitas
+  audionya sekarang lebih lemah. Jangan diduga - sapu saja.
+
+- webcam/datasets/expw_raw/origin.7z.001 sampai .008 masih ada padahal origin/
+  sudah diekstrak penuh. Aman dihapus; dibiarkan karena itu berkas unduhan
+  asli.
+
+- Kelas jijik di model wajah masih lemah (F1 0.3287) walau jumlah datanya naik
+  dari 175 ke 4114. Penyebabnya mutu label ExpW, bukan jumlah data, jadi
+  menambah data dari sumber yang sama tidak akan menolong. Ini temuan untuk
+  ditulis, bukan bug untuk dikejar.
+
+
+===============================================================================
+19. RESPONS ROBOT DIHAPUS, SAPUAN ALPHA SPEAKER-INDEPENDENT, FIGUR DIPERBAIKI
+    (18 September 2026)
+===============================================================================
+
+HAPUS  Respons robot (lambaian tangan saat 'happy') dihapus dari repo.
+      Sebelumnya cuma dimatikan lewat WAVE_ENABLED = False (bagian 10).
+      Sekarang benar-benar dihapus, atas permintaan: bagian respons robot
+      sedang dibicarakan dengan pemilik proyek pendamping yang juga punya
+      responsnya sendiri, jadi keduanya tidak perlu saling menabrak.
+
+      Yang dihapus dari fusion_webcam.py:
+        - kelas RobotController beserta blok penjelasannya
+        - konstanta WAVE_ENABLED
+        - indikator 'ROBOT:' di overlay dan parameter robot= di draw_overlay()
+        - grup argumen --wave_url / --wave_method / --wave_cooldown /
+          --wave_timeout / --wave_token / --no_wave
+        - blok pemicu trigger_wave() yang dikomentari di loop utama
+      Berkas yang dihapus:
+        - Servers/ainex_wave_server.py
+
+      YANG TIDAK DIHAPUS: dukungan KAMERA robot. --camera_url, pembaca MJPEG
+      di thread terpisah, --rotate / --flip / --width, dan diagnosa koneksi
+      semuanya masih ada. Membaca gambar DARI robot beda urusan dengan
+      mengirim gerakan KE robot, dan cuma yang kedua yang berpotensi bentrok.
+
+      Semuanya masih ada di riwayat git:
+        git log --oneline -- Servers/ainex_wave_server.py
+        git show <commit>:Servers/ainex_wave_server.py > Servers/ainex_wave_server.py
+
+PERBAIKAN  results_figures.py tidak bisa dijalankan sama sekali.
+      'python results_figures.py --jpg' berhenti dengan "tidak ada file yang
+      cocok di webcam/datasets/combined/test". Ini kemunduran yang dibuat
+      sendiri di bagian 13: waktu merge_datasets.py digeneralisasi, prefix nama
+      berkas berubah dari 'fer_'/'kdef_' jadi nama sumbernya -
+      'fer2013plus_', 'expw_', 'kdef_'. Prefix 'fer_' tidak ada lagi, tapi
+      results_figures.py masih mencarinya.
+
+      Prefiksnya sekarang jadi konstanta di satu tempat (PREFIX_A/PREFIX_B),
+      bukan ditulis berulang di empat baris.
+
+      Sekalian dibetulkan: gambar_wajah() membandingkan model baseline FER2013
+      lawan merged_baseline, dua-duanya model lama. Sekarang membandingkan
+      merged_baseline (lama) lawan gabungan_ferplus_expw (baru), di test FER+
+      dan KDEF.
+
+      Dan satu klaim yang sudah tidak benar: judul panel B dulu menulis "tidak
+      ada beda yang signifikan" langsung sebagai teks. Itu benar untuk
+      perbandingan yang dulu, tapi salah begitu modelnya diganti - dan tidak
+      ada yang mengingatkan. Sekarang p-value-nya dihitung dan dicetak apa
+      adanya lewat tanda_p().
+
+BARU  Sapuan alpha dengan model audio SPEAKER-INDEPENDENT.
+
+        alpha   accuracy   macro-F1
+         0.00     0.5039     0.4410   <- audio saja
+         0.50     0.7567     0.7044
+         0.60     0.7619     0.7087   <- tertinggi di dua-duanya
+         0.70     0.7482     0.6923
+         1.00     0.6976     0.6293   <- visual saja
+
+      Alpha terbaiknya bergeser dari 0.50 ke 0.60, yaitu ke arah visual.
+      Masuk akal: modalitas audionya sekarang memang lebih lemah, jadi
+      porsinya berkurang. (Dugaan yang sama pernah salah di bagian 15 waktu
+      model wajah yang membaik - jadi tetap disapu, bukan ditebak.)
+
+      Fusion tetap unggul dari kedua modalitas tunggalnya walau audionya
+      lebih lemah: 0.7619 lawan visual-saja 0.6976 dan audio-saja 0.5039.
+
+      ALPHA di kode TIDAK diubah, tetap 0.50. Itu nilai yang benar untuk model
+      audio yang sekarang dipakai fusion_webcam.py (best_audio_cnn.pt, dilatih
+      dengan pembagian per berkas). Kalau nanti pindah ke
+      best_audio_cnn_spk.pt, ganti ALPHA jadi 0.60 berbarengan.
+
+CATATAN  Model audio mana yang sebaiknya dipakai di sistem akhir?
+      Perbandingan yang adil TIDAK MUNGKIN dibuat: menjalankan model
+      speaker-dependent di test speaker-independent tidak sah, karena penutur
+      di test itu ikut melatihnya. Jadi cuma ada satu angka yang sah untuk
+      penutur asing, yaitu 0.4778 milik model speaker-independent.
+
+      Praktik yang lazim dan yang disarankan di sini: PAKAI model yang dilatih
+      dengan semua data (best_audio_cnn.pt) di sistem akhir, tapi LAPORKAN
+      0.4778 / 0.4387 sebagai perkiraan jujur untuk penutur asing. Model akhir
+      dilatih dengan data terbanyak; angka yang dilaporkan datang dari
+      pengujian yang benar-benar menahan sebagian data.
+
+PERBAIKAN  mode_fusion() juga mengabaikan --tag - cacat yang sama dengan
+      mode_audio() di bagian 16. Nama keluarannya cuma memuat alpha
+      ("fusion_a0.50_test"), padahal model audio dan visual yang dipakai juga
+      menentukan isinya. Akibatnya hasil fusion dengan model audio
+      speaker-independent menimpa hasil konfigurasi biasa tanpa peringatan,
+      di bawah nama yang tidak menyebut-nyebut perbedaannya.
+
+      Sekarang --tag ikut dipakai. Berkas yang terlanjur ambigu diganti nama,
+      dan hasil untuk konfigurasi yang benar-benar dipakai kode dibuat ulang:
+
+        results/metrics_fusion_dep_a0.50_test.csv   <- best_audio_cnn.pt
+                                                       (yang dipakai sekarang)
+                                                       acc 0.8384, macro-F1 0.7961
+        results/metrics_fusion_spk_a0.50_test.csv   <- best_audio_cnn_spk.pt
+                                                       acc 0.7567, macro-F1 0.7044
+
+      results/*fusion_a0.60* yang lama dibiarkan sebagai catatan konfigurasi
+      sebelum ALPHA diubah; jangan dipakai mewakili sistem sekarang.
+
+
+===============================================================================
+20. CK+ SEBAGAI DOMAIN UJI, DAN BUKTI AWAL BAHWA ExpW MERUGIKAN
+    (22 September 2026)
+===============================================================================
+
+BARU  webcam/datasets/ckplus_raw/ dan webcam/scripts/ckplus_build.py
+      CK+ (Extended Cohn-Kanade) masuk sebagai DOMAIN UJI, bukan data latih.
+      Isinya cuma 327 urutan (981 gambar) lawan 60950 gambar latih di
+      combined/, jadi menambahkannya ke data latih praktis tidak terasa.
+      Nilainya ada di tempat lain: wajah studio, ekspresi disengaja, label
+      hasil FACS coding - domain bersih yang belum pernah dilihat model mana
+      pun.
+
+      Dua versi CK+ diunduh. Yang dipakai CK+48 (981 PNG 48x48), BUKAN
+      ckextended.csv (920 baris), karena satu alasan menentukan: nama berkas
+      CK+48 memuat ID SUBJEK (S010_004_00000017.png), sementara CSV-nya tidak
+      memuat apa-apa soal subjek.
+
+      Itu menentukan karena tiap urutan CK+ diwakili TEPAT 3 FRAME BERURUTAN
+      yang nyaris identik - sudah dicek, 327 urutan x 3 frame = 981. Membagi
+      per gambar berarti frame 17 di train dan frame 18 dari urutan yang sama
+      di test. Itu kesalahan yang sama persis dengan yang bikin angka surprise
+      audio kelihatan 0.8990 padahal 0.3958 (bagian 16). Karena itu
+      ckplus_build.py SELALU membagi per subjek (106 subjek terpakai).
+
+      Label CK+48 dipetakan langsung dari nama folder. Untuk CSV-nya,
+      pemetaan 0-7 diverifikasi dengan mencocokkan jumlah tiap kelas ke
+      jumlah urutan resmi CK+ (anger 45, contempt 18, disgust 59, fear 25,
+      happy 69, sadness 28, surprise 83) - cocok semua, jadi pemetaannya
+      bukan tebakan.
+
+      contempt dibuang (54 gambar), sama seperti di ferplus_build.py.
+      CK+48 tidak punya kelas neutral sama sekali, jadi ujinya 6 kelas.
+
+BARU  webcam/datasets/combined_noexpw/ - fer2013plus + kdef, tanpa ExpW.
+      34830 train / 3791 val / 3854 test. Disiapkan untuk ablasi ExpW.
+
+TEMUAN AWAL: ExpW tampaknya MERUGIKAN di wajah bersih.
+      Diuji di CK+, domain yang tidak dipakai melatih model mana pun:
+
+        kelas       tanpa ExpW   dengan ExpW   selisih
+        angry           0.6415        0.3292    -0.3123
+        disgust         0.7000        0.4831    -0.2169
+        fear            0.4909        0.2759    -0.2150
+        sad             0.6851        0.5876    -0.0975
+        happy           0.9764        0.9787    +0.0023
+        surprise        0.9448        0.9537    +0.0089
+        accuracy        0.7843        0.6526    -0.1316
+        macro-F1        0.6341        0.5154    -0.1187
+
+      Polanya konsisten: kelas yang ekspresinya halus (angry, disgust, fear,
+      sad) jatuh 10-31 poin, sementara dua kelas yang paling kentara (happy,
+      surprise) tidak berubah. Sejalan dengan dugaan soal mutu label ExpW di
+      DATASETS.txt A5.
+
+      Gejala yang paling jelas: model dengan ExpW menebak NEUTRAL untuk 20.6%
+      gambar CK+, padahal CK+48 tidak punya kelas neutral sama sekali. Model
+      tanpa ExpW cuma 5.6%. ExpW menyumbang 5000 gambar neutral di train, dan
+      neutral memang kelas terbesar di combined (15513).
+
+PERINGATAN - INI BELUM ABLASI YANG BERSIH.
+      Pembanding "tanpa ExpW" di atas adalah merged_baseline, yang selain
+      tidak punya ExpW juga memakai label FER2013 ASLI, bukan FER+. Jadi ada
+      DUA perbedaan sekaligus dan angka di atas tidak bisa dipakai menyalahkan
+      ExpW sendirian.
+
+      Ablasi yang benar perlu model baru yang dilatih di combined_noexpw
+      (fer2013plus + kdef), supaya satu-satunya perbedaan adalah ExpW:
+
+        python webcam/scripts/training_yolo_.py --yes             --data webcam/datasets/combined_noexpw             --name gabungan_noexpw --workers 8 --batch 64
+
+      Lalu bandingkan kedua model di TIGA test set yang sama:
+        CK+     : --data webcam/datasets/ckplus
+        FER+    : --data webcam/datasets/combined --prefix fer2013plus_
+        KDEF    : --data webcam/datasets/combined --prefix kdef_
+        ExpW    : --data webcam/datasets/combined --prefix expw_
+      Yang terakhir penting sebagai penyeimbang: kalau ExpW dibuang, angka di
+      domain liar pasti turun. Pertanyaannya apakah itu sepadan.
+
+
+===============================================================================
+21. ABLASI ExpW - DUGAAN DI BAGIAN 20 TERNYATA SALAH SASARAN
+    (22 September 2026)
+===============================================================================
+
+Bagian 20 mencatat "bukti awal bahwa ExpW merugikan" dan sudah memperingatkan
+sendiri bahwa itu belum ablasi yang bersih. Ablasinya sekarang sudah dijalankan
+dan hasilnya MEMBALIK kesimpulannya: yang merugikan bukan ExpW, melainkan FER+.
+
+MODEL  webcam/models/gabungan_noexpw/ - dilatih di combined_noexpw
+       (fer2013plus + kdef), yolov8n-cls, 20 epoch, batch 64, workers 4,
+       15.9 menit. Val top-1 terbaik 0.8594 di epoch 18.
+
+       CATATAN: angka 0.8594 itu TIDAK sebanding dengan 0.6964 milik model
+       ber-ExpW. Val set-nya beda - 3791 gambar tanpa wajah liar lawan 9398
+       dengan ExpW. Membandingkan keduanya langsung menghasilkan "kenaikan"
+       16 poin yang seluruhnya artefak pemilihan data.
+
+HASIL ABLASI. Kedua model diuji di empat test set yang SAMA. Satu-satunya
+      perbedaan antar model adalah ada/tidaknya ExpW di data latih.
+
+        test set     n      acc dgn   acc tnp    selisih
+        CK+        927       0.6526    0.6624     +0.0097
+        FER+      3350       0.8546    0.8552     +0.0006
+        KDEF       504       0.9524    0.9286     -0.0238
+        ExpW      5527       0.5792    0.3369     -0.2423
+
+      Membuang ExpW: praktis tidak mengubah apa-apa di wajah bersih (CK+ naik
+      1 poin, FER+ naik 0.06 poin), MERUGIKAN di KDEF (turun 2.4 poin), dan
+      menghancurkan kemampuan di wajah liar (turun 24.2 poin).
+
+      Jadi jawaban pertanyaannya: TIDAK, ExpW tidak merugikan. ExpW dipertahankan.
+
+YANG SEBENARNYA TERJADI. Tiga model diuji di CK+ yang sama:
+
+        data latih                 acc CK+   tebakan 'neutral'
+        FER2013 + KDEF              0.7843               5.6%
+        FER+ + KDEF                 0.6624              21.5%
+        FER+ + ExpW + KDEF          0.6526              20.6%
+
+      Penurunan 13 poin yang di bagian 20 ditimpakan ke ExpW sebenarnya
+      terbagi begini:
+        FER2013 -> FER+   : -12.2 poin   <- ini penyebabnya
+        tambah ExpW       :  -1.0 poin
+
+      Gejala tebakan 'neutral' juga milik FER+, bukan ExpW: 5.6% -> 21.5%
+      begitu label diganti ke FER+, lalu tidak berubah waktu ExpW ditambahkan.
+      Masuk akal kalau dilihat porsinya: neutral di train FER+ 9365 dari 26778
+      (35%), sementara di FER2013 4965 dari 28709 (17%). FER+ memang
+      melabel-ulang banyak gambar jadi neutral.
+
+      F1 per kelas di CK+ menunjukkan kelas mana yang dikorbankan FER+:
+        kelas      FER2013+KDEF   FER++KDEF   selisih
+        angry            0.6415      0.2833    -0.3582
+        disgust          0.7000      0.6008    -0.0992
+        fear             0.4909      0.3516    -0.1393
+        sad              0.6851      0.5860    -0.0991
+        happy            0.9764      0.9834    +0.0070
+        surprise         0.9448      0.9533    +0.0085
+
+      Sejalan dengan peringatan di DATASETS.txt A4: FER+ memangkas disgust dari
+      436 ke 175 gambar latih, dan ternyata bukan cuma disgust yang kena.
+
+PELAJARAN METODOLOGI. Bagian 20 membandingkan dua model yang berbeda di DUA
+      hal sekaligus lalu menimpakan seluruh selisihnya ke satu variabel.
+      Peringatannya memang ditulis, tapi angkanya terlanjur disajikan dengan
+      judul "bukti awal bahwa ExpW merugikan" - dan judul itulah yang menempel.
+      Kalau ada dua perbedaan, jangan menamai temuannya menurut salah satu.
+
+BELUM  Pertanyaan yang sekarang terbuka: apakah FER2013 label asli sebenarnya
+      LEBIH BAIK daripada FER+ untuk proyek ini? Ablasinya perlu satu training
+      lagi, fer2013 + expw + kdef:
+
+        python webcam/scripts/merge_datasets.py --sources fer2013,expw,kdef             --dst webcam/datasets/combined_fer2013 --force
+        python webcam/scripts/training_yolo_.py --yes             --data webcam/datasets/combined_fer2013             --name gabungan_fer2013 --workers 4 --batch 64
+
+      Lalu uji di CK+ dan KDEF. Kalau menang, keputusan memakai FER+ di bagian
+      13 perlu ditinjau ulang - dan itu keputusan yang cukup besar, karena
+      seluruh dataset gabungan dibangun di atasnya.
+
+
+===============================================================================
+22. ABLASI LABEL: FER2013 ASLI TERNYATA MENGALAHKAN FER+ (22 September 2026)
+===============================================================================
+
+Pertanyaan yang dibuka bagian 21 sudah dijawab. Model ketiga dilatih di
+combined_fer2013 (fer2013 + expw + kdef), 62881 gambar latih, 20 epoch,
+33.9 menit, val top-1 terbaik 0.6274 di epoch 14.
+
+      webcam/models/gabungan_fer2013/
+
+ANGKA val TIDAK BISA DIBANDINGKAN ANTAR KETIGA MODEL. Val set-nya beda-beda
+(9398 / 3791 / 9613) dan sistem labelnya beda. 0.6274 yang paling rendah tidak
+berarti apa-apa sendirian.
+
+Perbandingan yang sah cuma di test set pihak ketiga - label yang tidak dipakai
+melatih model mana pun:
+
+        test set     n    FER++ExpW   FER+ saja   FER2013+ExpW
+        CK+        927       0.6526      0.6624         0.7638   acc
+                             0.5154      0.5369         0.6136   macro-F1
+        KDEF       504       0.9524      0.9286         0.9444   acc
+                             0.9524      0.9277         0.9445   macro-F1
+        ExpW      5527       0.5792      0.3369         0.5721   acc
+                             0.4900      0.3086         0.4836   macro-F1
+
+      FER2013 menang TELAK di CK+ (+11.1 poin acc, +9.8 poin macro-F1),
+      kalah tipis di KDEF (-0.8), dan imbang di ExpW (-0.7).
+
+KENAPA. Di CK+, model FER+ menghabiskan seperlima tebakannya untuk kelas
+      neutral - padahal CK+48 TIDAK PUNYA kelas neutral sama sekali:
+
+        model             tebak neutral   dari semua salahnya
+        FER+ + ExpW               20.6%                 59.3%
+        FER+ saja                 21.5%                 63.6%
+        FER2013 + ExpW             4.9%                 20.5%
+
+      Jadi 3 dari 5 kesalahan model FER+ di CK+ adalah menebak neutral.
+
+      Ini BUKAN artefak test set. Gambar CK+48 adalah 3 frame PUNCAK tiap
+      urutan - ekspresinya paling kuat, justru saat paling tidak mungkin
+      disebut netral. Menjawab "netral" untuk wajah marah pada intensitas
+      puncak adalah kesalahan sungguhan, dan untuk robot yang harus menanggapi
+      ekspresi orang, itu kesalahan yang mahal.
+
+      Sebabnya ada di proporsi data latih: neutral 35% di FER+ (9365 dari
+      26778) lawan 17% di FER2013 (4965 dari 28709). FER+ melabel-ulang banyak
+      wajah berekspresi lemah jadi neutral, dan model ikut belajar begitu.
+
+      Catatan penyeimbang: di KDEF dan ExpW ketiga model menebak neutral
+      dengan porsi yang kurang lebih benar. Gejalanya cuma muncul di CK+.
+
+SEBERAPA JAUH KEDUA LABEL ITU BERBEDA: dicek langsung, FER2013 dan FER+ TIDAK
+      SEPAKAT pada 11487 dari 33500 gambar (34.3%). Bukan dua versi yang mirip
+      - sepertiga datanya diberi jawaban berbeda.
+
+      Karena itu model FER2013 TIDAK diuji di test fer2013plus_, dan sebaliknya:
+      model akan dihukum untuk ketidaksepakatan label, bukan untuk salah
+      membaca ekspresi. Sebagai catatan saja, model FER2013 di test FER2013
+      aslinya dapat acc 0.6901 / macro-F1 0.6683 - angka ini TIDAK sebanding
+      dengan 0.8546 milik model FER+ di test FER+.
+
+SARAN: pindah ke FER2013 + ExpW + KDEF.
+      Alasannya CK+ adalah sumber label paling bisa dipercaya di proyek ini
+      (FACS coding), dan kecenderungan menebak neutral itu cacat nyata untuk
+      robot, bukan sekadar angka yang kurang bagus di satu tabel.
+
+      Yang harus ikut berubah kalau jadi pindah:
+        - combined/ dibangun ulang dengan --sources fer2013,expw,kdef
+        - VISUAL_MODEL di fusion_webcam.py dan results_calculation.py
+        - sapuan alpha diulang (angka fusion ikut berubah)
+        - DATASETS.txt A4 dan A6, README, dan bagian 13 perlu ditinjau
+
+      Yang menahan: di KDEF, FER+ masih sedikit lebih baik (0.9524 lawan
+      0.9444). Buktinya bertumpu pada satu test set (CK+, 927 gambar, 106
+      subjek). Jadi ini saran yang kuat, bukan kesimpulan yang tertutup.
+
+
+===============================================================================
+23. PINDAH KE LABEL FER2013: BANGUN ULANG, ARAHKAN ULANG, HITUNG ULANG
+    (22 September 2026)
+===============================================================================
+
+Menjalankan saran di bagian 22. Keputusan memakai FER+ di bagian 13 dibatalkan.
+
+BANGUN ULANG  webcam/datasets/combined/ sekarang fer2013 + expw + kdef.
+        split      fer2013    expw    kdef    total
+        train        28709   26120    8052    62881
+        val           3587    5607     419     9613
+        test          3591    5527     504     9622
+
+      SUMBER_BAWAAN di merge_datasets.py ikut diganti jadi
+      ['fer2013','expw','kdef'], supaya menjalankannya tanpa argumen
+      menghasilkan susunan yang benar.
+
+      Ketimpangan kelas di train turun dari 6.1x (susunan FER+) jadi 3.1x,
+      karena FER2013 menyimpan 436 gambar disgust sementara FER+ cuma 175.
+
+      webcam/datasets/combined_fer2013/ dihapus - isinya identik dengan
+      combined/ yang baru, jadi cuma menghabiskan ruang dan bikin bingung
+      mana yang dipakai.
+
+ARAHKAN ULANG  VISUAL_MODEL di fusion_webcam.py dan results_calculation.py
+      sekarang webcam/models/gabungan_fer2013/weights/best.pt.
+
+      results_figures.py: PREFIX_A/NAMA_A diganti 'fer2013plus_'/'FER+' jadi
+      'fer2013_'/'FER2013', dan BARU_DEFAULT ikut pindah. Tanpa ini figurnya
+      berhenti dengan "tidak ada file yang cocok" - persis kemunduran yang
+      terjadi di bagian 19, dan alasan prefiksnya dijadikan konstanta waktu itu.
+
+HITUNG ULANG  Semua angka wajah dan fusion dihitung ulang.
+
+        domain uji          n      acc   macro-F1
+        gabungan (semua) 9622   0.6356     0.5913
+        FER2013          3591   0.6901     0.6683
+        ExpW             5527   0.5721     0.4836
+        KDEF              504   0.9444     0.9445
+        CK+               927   0.7638     0.6136
+
+      Sapuan alpha diulang dengan model wajah yang baru:
+
+        alpha   accuracy   macro-F1
+         0.00     0.6633     0.6404   <- audio saja
+         0.40     0.7937     0.7668
+         0.50     0.8020     0.7736   <- tertinggi, TIDAK berubah
+         0.60     0.7748     0.7444
+         1.00     0.6356     0.5913   <- visual saja
+
+      ALPHA tetap 0.50. Disapu ulang, bukan diasumsikan - dugaan soal
+      pergeseran alpha sudah pernah salah di bagian 15.
+
+      Fusion sekarang acc 0.8020 / macro-F1 0.7736 di 9622 sampel.
+      Ambang keputusan: TUNGGAL 71.0% (akurasi 0.9178), MAJEMUK 9.7%
+      (label asli di top-2: 0.8798), TIDAK YAKIN 19.3%.
+
+      JANGAN membandingkan 0.8020 dengan 0.8384 milik susunan FER+ secara
+      langsung: test set-nya beda (9622 lawan 9381) dan sistem labelnya beda.
+      Perbandingan yang sah ada di bagian 22, di CK+/KDEF/ExpW.
+
+REVISI  DATASETS.txt A1 (FER2013 kembali jadi sumber utama), A4 (FERPlus jadi
+      "dicoba lalu dibatalkan", lengkap dengan alasan dan angkanya), A6
+      (susunan dan hasil baru), tabel ringkasan bagian C; README bagian judul,
+      dataset, hasil, dan tabel alpha.
+
+      Keempat figur di results/ dirender ulang dengan model baru.
+
